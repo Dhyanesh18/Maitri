@@ -3,8 +3,8 @@ FastAPI application for multimodal mental health analysis pipeline
 Combines video emotion detection, audio analysis, transcription, and text analysis
 """
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Form
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, List, Any
@@ -18,6 +18,8 @@ import asyncio
 from enum import Enum
 import sys
 from multiprocessing import freeze_support
+import os
+import subprocess
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -26,6 +28,7 @@ from parallel_pipeline import (
     PrivacyMode,
     MultimodalAnalysisResult
 )
+from emotional_support_chatbot import EmotionalSupportChatbot
 
 
 class PrivacyModeRequest(str, Enum):
@@ -392,6 +395,24 @@ class VideoService:
         self.file_manager.cleanup_task(task_id, keep_video=not delete_video)
 
 
+# Add after other service initializations
+chatbot_service = EmotionalSupportChatbot(sessions_dir="chat_sessions")
+
+# Pydantic models for chatbot
+class ChatRequest(BaseModel):
+    session_id: Optional[str] = None
+    message: str
+    temperature: Optional[float] = 0.7
+    max_tokens: Optional[int] = 500
+
+class ChatResponse(BaseModel):
+    success: bool
+    session_id: str
+    assistant_message: Optional[str] = None
+    error: Optional[str] = None
+    session_info: Optional[Dict] = None
+
+
 app = FastAPI(
     title="Multimodal Mental Health Analysis API",
     description="Comprehensive mental health analysis combining video emotion detection, audio analysis, transcription, and text analysis",
@@ -405,6 +426,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add this for large file uploads
+# Set max upload size to 500MB (adjust as needed)
+os.environ["FASTAPI_MAX_BODY_SIZE"] = "524288000"
 
 file_manager = FileManager()
 analysis_service = MultimodalAnalysisService()
@@ -462,33 +487,32 @@ async def health_check():
     }
 
 
-@app.post("/api/upload-video", response_model=UploadResponse)
+@app.post("/api/upload-video", response_model=AnalysisResultResponse)
 async def upload_video(
-    background_tasks: BackgroundTasks,
+    # File is correctly defined
     file: UploadFile = File(...),
-    privacy_mode: PrivacyModeRequest = PrivacyModeRequest.ANONYMIZED,
-    interval_seconds: int = 5,
-    frame_skip: int = 2
+    
+    # All other parameters MUST use Form()
+    privacy_mode: PrivacyModeRequest = Form(PrivacyModeRequest.ANONYMIZED),
+    interval_seconds: int = Form(5),
+    frame_skip: int = Form(2)
 ):
     """
     Upload a video for comprehensive multimodal mental health analysis
-    
-    Parameters:
-    - file: Video file (mp4, avi, mov, etc.)
-    - privacy_mode: ANONYMIZED (recommended) or FULL_PRIVACY
-    - interval_seconds: Video analysis interval duration (default: 5)
-    - frame_skip: Process every Nth frame (default: 2)
-    
-    Returns:
-    - task_id: Unique identifier for tracking analysis
-    - video_path: Path where video is stored
-    - privacy_mode: Selected privacy mode
+    SYNCHRONOUS - Returns complete analysis result after processing
     """
+    task_id = None
+    upload_path = None
+    
+    print("\n--- New Upload Request Received ---")
+    
     try:
         if not file.filename:
             raise HTTPException(status_code=400, detail="No file provided")
         
-        allowed_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv'}
+        print(f"Processing file: {file.filename}")
+        
+        allowed_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm'}
         file_ext = Path(file.filename).suffix.lower()
         if file_ext not in allowed_extensions:
             raise HTTPException(
@@ -496,29 +520,139 @@ async def upload_video(
                 detail=f"Invalid file type. Allowed: {', '.join(allowed_extensions)}"
             )
         
-        privacy_enum = PrivacyMode(privacy_mode.value)
+        # Generate task ID and save video
+        task_id = file_manager.generate_task_id()
+        upload_path = file_manager.get_upload_path(task_id, file.filename)
         
-        task_id, video_path, privacy_value = await video_service.process_upload(
-            file=file,
+        print(f"Task ID: {task_id}")
+        print(f"Saving to: {upload_path}")
+
+        # === START OF CRITICAL CHANGE (Streaming) ===
+        # Replaced await file.read() with robust streaming
+        try:
+            with open(upload_path, "wb") as buffer:
+                # file.file is the underlying SpooledTemporaryFile
+                # This streams the file directly to disk, avoiding memory issues
+                shutil.copyfileobj(file.file, buffer)
+        except Exception as e:
+            print(f"Error writing file to disk: {e}")
+            raise Exception(f"Could not write file to disk: {e}")
+        # === END OF CRITICAL CHANGE ===
+            
+        print(f"Video saved to disk: {upload_path}")
+        
+        # Verify file was written correctly
+        if not upload_path.exists():
+            raise Exception("File was not saved properly (path does not exist)")
+        
+        actual_size = upload_path.stat().st_size
+        if actual_size == 0:
+            raise Exception("Uploaded file is empty (size 0 bytes)")
+        
+        print(f"File size on disk: {actual_size} bytes")
+        
+        # Give the filesystem a moment to settle
+        await asyncio.sleep(0.5)
+        
+        # === START OF CRITICAL CHANGE (FFmpeg Guard) ===
+        # Hardened check to FAIL on corrupt video
+        try:
+            print("Verifying video file with FFmpeg...")
+            result = subprocess.run(
+                [
+                    'ffmpeg',
+                    '-v', 'error',  # Only print errors
+                    '-i', str(upload_path), # Input file
+                    '-f', 'null',  # Don't create an output file
+                    '-'            # Output to stdout (which is ignored)
+                ],
+                capture_output=True,
+                text=True, # Decode stderr as text
+                timeout=10
+            )
+            
+            # If returncode is not 0, FFmpeg failed
+            if result.returncode != 0:
+                error_message = f"FFmpeg verification failed. File is corrupt or unreadable. Error: {result.stderr}"
+                print(f"!!! {error_message}")
+                # This exception will be caught by the outer try/except
+                raise Exception(error_message)
+            
+            print("FFmpeg verification successful.")
+
+        except Exception as e:
+            # Re-raise the exception (either from timeout or from the check)
+            raise e
+        # === END OF CRITICAL CHANGE ===
+            
+    except Exception as e:
+        print(f"File upload error: {e}")
+        if upload_path and upload_path.exists():
+            print(f"Cleaning up failed upload: {upload_path}")
+            upload_path.unlink() # Clean up the corrupt/failed file
+        # Return a 500 error with the specific failure reason
+        raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
+    finally:
+        # This is important! It closes the SpooledTemporaryFile
+        await file.close()
+    
+    # --- Start Analysis (only if upload succeeded) ---
+    
+    # Save initial status
+    file_manager.save_status(task_id, {
+        'task_id': task_id,
+        'status': 'processing',
+        'progress': 0.0,
+        'stage': 'starting',
+        'message': 'Video uploaded. Starting analysis...'
+    })
+    
+    # Convert privacy mode
+    privacy_enum = PrivacyMode(privacy_mode.value)
+    
+    # SYNCHRONOUS ANALYSIS
+    print(f"Starting synchronous analysis for task: {task_id}")
+    
+    try:
+        result_dict = await analysis_service.analyze_video(
+            video_path=upload_path,
+            task_id=task_id,
+            file_manager=file_manager,
             privacy_mode=privacy_enum,
             interval_seconds=interval_seconds,
-            frame_skip=frame_skip,
-            background_tasks=background_tasks
+            frame_skip=frame_skip
         )
-        
-        return UploadResponse(
-            task_id=task_id,
-            message=f"Video uploaded. Multimodal analysis started with {privacy_mode.value} mode.",
-            status="processing",
-            video_path=video_path,
-            privacy_mode=privacy_value
-        )
-        
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+        # Handle errors during the analysis step
+        print(f"Analysis pipeline error: {e}")
+        file_manager.save_status(task_id, {'message': f'Analysis failed: {e}'})
+        # Note: You might want to delete the `upload_path` file here too
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
+    # Save complete results
+    file_manager.save_result(task_id, result_dict)
+    
+    print(f"Analysis completed for task: {task_id}")
+    
+    # Extract summary for response
+    summary = result_dict.get('summary', {})
+    llm_assessment = result_dict.get('llm_final_assessment', {})
+    
+    # Return complete analysis result
+    return AnalysisResultResponse(
+        task_id=task_id,
+        mental_health_score=summary.get('mental_health_score', 0),
+        risk_level=summary.get('risk_level', 'unknown'),
+        confidence=summary.get('confidence', 0.0),
+        video_emotion=summary.get('video_emotion', 'neutral'),
+        audio_emotion=summary.get('audio_emotion', 'neutral'),
+        text_emotion=summary.get('text_emotion', 'neutral'),
+        depression_level=summary.get('depression_level', 'unknown'),
+        key_indicators=llm_assessment.get('key_indicators', []),
+        recommendations=llm_assessment.get('recommendations', []),
+        areas_of_concern=llm_assessment.get('areas_of_concern', []),
+        positive_indicators=llm_assessment.get('positive_indicators', [])
+    )
 
 @app.get("/api/status/{task_id}", response_model=StatusResponse)
 async def get_analysis_status(task_id: str):
@@ -671,6 +805,94 @@ async def cleanup_task(task_id: str, delete_video: bool = False):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Chatbot routes
+@app.post("/api/chat/new-session")
+async def create_chat_session():
+    """Create a new chat session"""
+    session_id = chatbot_service.create_session()
+    return {
+        "success": True,
+        "session_id": session_id,
+        "message": "New chat session created"
+    }
+
+@app.post("/api/chat/message", response_model=ChatResponse)
+async def send_chat_message(request: ChatRequest):
+    """
+    Send a message to the emotional support chatbot
+    
+    Parameters:
+    - session_id: Session identifier (optional, creates new if not provided)
+    - message: User's message
+    - temperature: Response creativity (0.0-1.0)
+    - max_tokens: Maximum response length
+    """
+    try:
+        # Create new session if not provided
+        session_id = request.session_id
+        if not session_id:
+            session_id = chatbot_service.create_session()
+        
+        # Get chatbot response
+        response = chatbot_service.chat(
+            session_id=session_id,
+            user_message=request.message,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens
+        )
+        
+        if response['success']:
+            return ChatResponse(
+                success=True,
+                session_id=response['session_id'],
+                assistant_message=response['assistant_message'],
+                session_info=response['session_info']
+            )
+        else:
+            return ChatResponse(
+                success=False,
+                session_id=session_id,
+                error=response['error']
+            )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/chat/history/{session_id}")
+async def get_chat_history(session_id: str):
+    """Get chat history for a session"""
+    history = chatbot_service.get_chat_history(session_id)
+    if history['success']:
+        return history
+    else:
+        raise HTTPException(status_code=404, detail=history['error'])
+
+@app.delete("/api/chat/clear/{session_id}")
+async def clear_chat_history(session_id: str):
+    """Clear chat history for a session"""
+    result = chatbot_service.clear_session(session_id)
+    return result
+
+@app.delete("/api/chat/session/{session_id}")
+async def delete_chat_session(session_id: str):
+    """Delete a chat session"""
+    result = chatbot_service.delete_session(session_id)
+    if result['success']:
+        return result
+    else:
+        raise HTTPException(status_code=404, detail=result['error'])
+
+@app.get("/api/chat/sessions")
+async def list_chat_sessions():
+    """List all active chat sessions"""
+    sessions = chatbot_service.list_sessions()
+    return {
+        "success": True,
+        "count": len(sessions),
+        "sessions": sessions
+    }
 
 
 if __name__ == "__main__":

@@ -15,6 +15,9 @@ import {
   Mic,
   Upload,
   Trash2,
+  Shield,
+  ShieldCheck,
+  Loader2,
 } from "lucide-react";
 
 export default function Progress() {
@@ -22,11 +25,14 @@ export default function Progress() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordedVideoUrl, setRecordedVideoUrl] = useState(null);
   const [mediaRecorder, setMediaRecorder] = useState(null);
-  const [journalStreak, setJournalStreak] = useState(12); // Example streak
+  const [journalStreak, setJournalStreak] = useState(12);
   const [lastJournalDate, setLastJournalDate] = useState("Today");
   const [showVideoDialog, setShowVideoDialog] = useState(false);
   const [savedVideos, setSavedVideos] = useState([]);
   const [pendingStream, setPendingStream] = useState(null);
+  const [privacyMode, setPrivacyMode] = useState("anonymized"); // "anonymized" or "full_privacy"
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState("");
   const videoRef = useRef(null);
   const previewRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -149,37 +155,95 @@ export default function Progress() {
     }
   };
 
-  const handleVideoUpload = (e) => {
+  const handleVideoUpload = async (e) => {
     const files = Array.from(e.target.files);
 
-    files.forEach((file) => {
+    for (const file of files) {
       if (file.type.startsWith("video/")) {
-        const videoUrl = URL.createObjectURL(file);
-        const newVideo = {
-          id: Date.now() + Math.random(),
-          url: videoUrl,
-          timestamp: new Date(),
-          name: file.name,
-          size: file.size,
-        };
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("privacy_mode", privacyMode);
+        formData.append("interval_seconds", 5);
+        formData.append("frame_skip", 2);
 
-        setSavedVideos((prev) => [...prev, newVideo]);
+        try {
+          // Start analyzing
+          setIsAnalyzing(true);
+          setAnalysisProgress("Uploading video...");
+
+          // Simulate progress updates
+          const progressInterval = setInterval(() => {
+            setAnalysisProgress((prev) => {
+              const stages = [
+                "Uploading video...",
+                "Processing video frames...",
+                "Analyzing facial expressions...",
+                "Extracting audio...",
+                "Transcribing speech...",
+                "Analyzing audio emotions...",
+                "Processing text sentiment...",
+                "Generating AI assessment...",
+                "Finalizing results...",
+              ];
+              const currentIndex = stages.indexOf(prev);
+              if (currentIndex < stages.length - 1) {
+                return stages[currentIndex + 1];
+              }
+              return prev;
+            });
+          }, 8000);
+
+          const response = await fetch("http://localhost:8000/api/upload-video", {
+            method: "POST",
+            body: formData,
+          });
+
+          clearInterval(progressInterval);
+
+          if (!response.ok) {
+            throw new Error(`Analysis failed: ${response.statusText}`);
+          }
+
+          const result = await response.json();
+
+          toast.success("Analysis completed!", {
+            position: "top-right",
+            autoClose: 5000,
+          });
+
+          // Handle the complete result
+          console.log("Complete Analysis Result:", result);
+
+          // Display results to user
+          displayAnalysisResults(result);
+
+          setIsAnalyzing(false);
+          setAnalysisProgress("");
+        } catch (error) {
+          console.error("Upload failed:", error);
+          toast.error("Upload or analysis failed. Please try again.", {
+            position: "top-right",
+            autoClose: 5000,
+          });
+          setIsAnalyzing(false);
+          setAnalysisProgress("");
+        }
       }
-    });
-
-    if (files.length > 0) {
-      // Show success toast
-      toast.success(`${files.length} video(s) uploaded successfully!`, {
-        position: "top-right",
-        autoClose: 3000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-      });
     }
+  };
 
-    // Reset file input
-    e.target.value = "";
+  const displayAnalysisResults = (result) => {
+    console.log("Mental Health Score:", result.mental_health_score);
+    console.log("Risk Level:", result.risk_level);
+    console.log("Confidence:", result.confidence);
+    console.log("Video Emotion:", result.video_emotion);
+    console.log("Audio Emotion:", result.audio_emotion);
+    console.log("Text Emotion:", result.text_emotion);
+    console.log("Depression Level:", result.depression_level);
+    console.log("Key Indicators:", result.key_indicators);
+    console.log("Recommendations:", result.recommendations);
+    console.log("Areas of Concern:", result.areas_of_concern);
+    console.log("Positive Indicators:", result.positive_indicators);
   };
 
   const deleteVideo = (videoId) => {
@@ -319,25 +383,149 @@ export default function Progress() {
           </div>
 
           <div className="space-y-4">
-            {/* Video Recording Preview */}
+            {/* Privacy Mode Toggle */}
+            <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4 border border-blue-200">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  {privacyMode === "full_privacy" ? (
+                    <ShieldCheck className="w-5 h-5 text-purple-600" />
+                  ) : (
+                    <Shield className="w-5 h-5 text-blue-600" />
+                  )}
+                  <h3 className="text-base font-semibold text-gray-800">
+                    Privacy Mode
+                  </h3>
+                </div>
+                <button
+                  onClick={() =>
+                    setPrivacyMode((prev) =>
+                      prev === "anonymized" ? "full_privacy" : "anonymized"
+                    )
+                  }
+                  className={`relative inline-flex h-8 w-16 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                    privacyMode === "full_privacy"
+                      ? "bg-purple-600 focus:ring-purple-500"
+                      : "bg-blue-500 focus:ring-blue-400"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
+                      privacyMode === "full_privacy"
+                        ? "translate-x-9"
+                        : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {privacyMode === "anonymized" ? (
+                  <div className="flex items-start gap-2">
+                    <div className="bg-blue-100 p-1.5 rounded-lg shrink-0 mt-0.5">
+                      <Shield className="w-4 h-4 text-blue-700" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-blue-900">
+                        Anonymized Mode (Recommended)
+                      </p>
+                      <p className="text-xs text-blue-700 leading-relaxed mt-1">
+                        Your data is processed with personal identifiers removed.
+                        Names, locations, and specific details are anonymized while
+                        preserving emotional context for analysis.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2">
+                    <div className="bg-purple-100 p-1.5 rounded-lg shrink-0 mt-0.5">
+                      <ShieldCheck className="w-4 h-4 text-purple-700" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-purple-900">
+                        Full Privacy Mode
+                      </p>
+                      <p className="text-xs text-purple-700 leading-relaxed mt-1">
+                        Maximum privacy protection. All personal information is
+                        completely removed before analysis. Only general emotional
+                        patterns are evaluated with no identifying data retained.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-3 pt-3 border-t border-blue-200">
+                <p className="text-xs text-gray-600 flex items-center gap-1">
+                  <span className="font-semibold">Current Mode:</span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      privacyMode === "full_privacy"
+                        ? "bg-purple-200 text-purple-800"
+                        : "bg-blue-200 text-blue-800"
+                    }`}
+                  >
+                    {privacyMode === "full_privacy"
+                      ? "Full Privacy"
+                      : "Anonymized"}
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            {/* Video Recording Preview / Loader */}
             <div className="bg-gray-100 rounded-xl overflow-hidden">
               <div className="h-64 flex items-center justify-center">
-                <div className="text-center">
-                  <Video className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600">
-                    Ready to record your video journal
-                  </p>
-                  <p className="text-gray-500 text-sm">
-                    Click start to begin recording with audio and video
-                  </p>
-                </div>
+                {isAnalyzing ? (
+                  <div className="text-center">
+                    <div className="relative mb-6">
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-24 h-24 border-8 border-blue-100 rounded-full"></div>
+                      </div>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-24 h-24 border-8 border-t-blue-600 border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin"></div>
+                      </div>
+                      <div className="relative z-10 flex items-center justify-center w-24 h-24 mx-auto">
+                        <Video className="w-10 h-10 text-blue-600" />
+                      </div>
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-800 mb-2">
+                      Analyzing Your Video
+                    </h3>
+                    <p className="text-gray-600 text-sm mb-4 max-w-md">
+                      {analysisProgress}
+                    </p>
+                    <div className="bg-white rounded-full p-2 inline-flex items-center gap-2 shadow-sm">
+                      <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
+                      <span className="text-xs text-gray-600 font-medium pr-2">
+                        This may take a few minutes...
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    <Video className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600">
+                      Ready to record your video journal
+                    </p>
+                    <p className="text-gray-500 text-sm">
+                      Click start to begin recording with audio and video
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Video Controls */}
             <div className="flex justify-between items-center">
               <div className="text-sm text-gray-500">
-                HD Video Recording • High Quality Audio • Auto Download
+                {isAnalyzing ? (
+                  <span className="flex items-center gap-2 text-blue-600 font-medium">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Analysis in progress...
+                  </span>
+                ) : (
+                  "HD Video Recording • High Quality Audio • Auto Download"
+                )}
               </div>
 
               <div className="flex gap-2">
@@ -348,17 +536,28 @@ export default function Progress() {
                   onChange={handleVideoUpload}
                   className="hidden"
                   multiple
+                  disabled={isAnalyzing}
                 />
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded-full font-medium hover:bg-blue-600 transition-colors"
+                  disabled={isAnalyzing}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-colors ${
+                    isAnalyzing
+                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                      : "bg-blue-500 text-white hover:bg-blue-600"
+                  }`}
                 >
                   <Upload className="w-4 h-4" />
                   Upload Video
                 </button>
                 <button
                   onClick={startVideoRecording}
-                  className="flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded-full font-medium hover:bg-red-600 transition-colors"
+                  disabled={isAnalyzing}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-colors ${
+                    isAnalyzing
+                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                      : "bg-red-500 text-white hover:bg-red-600"
+                  }`}
                 >
                   <Play className="w-4 h-4" />
                   Start Recording
