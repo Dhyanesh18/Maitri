@@ -16,14 +16,14 @@ import {
 export default function Profile() {
   const [isEditing, setIsEditing] = useState(false);
   const [profile, setProfile] = useState({
-    firstName: "John",
-    lastName: "Doe",
-    email: "john.doe@example.com",
-    phone: "+1 (555) 123-4567",
-    dateOfBirth: "1990-01-15",
-    therapist: "Dr. Sarah Johnson",
-    emergencyContact: "Jane Doe - Sister",
-    emergencyPhone: "+1 (555) 987-6543",
+    firstName: "Dhyaneshvar",
+    lastName: "K",
+    email: "dhyaneshvar.k@gmail.com",
+    phone: "9892526542",
+    dateOfBirth: "2005-01-15",
+    therapist: "Chennai , India",
+    emergencyContact: "Dhyaneshvar - Friend Ritovan",
+    emergencyPhone: "9892525348",
   });
 
   const handleSave = () => {
@@ -192,7 +192,7 @@ export default function Profile() {
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Primary Therapist
+                    Address
                   </label>
                   <input
                     type="text"

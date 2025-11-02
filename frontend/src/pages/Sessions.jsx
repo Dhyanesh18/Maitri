@@ -9,7 +9,7 @@ export default function Sessions() {
     {
       id: 1,
       type: "bot",
-      content: "Hello! I'm here to support you. How are you feeling today?",
+      content: "Hello Dhyaneshvar! I'm here to support you. How are you feeling today?",
       timestamp: new Date(),
     },
   ]);

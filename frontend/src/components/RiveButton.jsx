@@ -45,7 +45,7 @@ export default function RiveButton() {
             onFocus={onButtonActivate}
             onBlur={onButtonDeactivate}
           >
-            EXPLORE NOW
+            EXPLORE
           </Link>
           <RiveComponent aria-hidden="true" />
         </div>

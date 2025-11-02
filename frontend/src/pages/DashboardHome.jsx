@@ -76,8 +76,11 @@ export default function DashboardHome() {
   const generateActivityData = () => {
     const WEEKS = 52;
     const DAYS = 7;
-    return Array.from({ length: WEEKS }, () =>
-      Array.from({ length: DAYS }, () => Math.floor(Math.random() * 5))
+    return Array.from({ length: WEEKS }, (_, weekIndex) =>
+      Array.from({ length: DAYS }, () => {
+        // Show activity (green) only for last 6-7 weeks, rest white
+        return weekIndex >= WEEKS - 7 ? Math.floor(Math.random() * 5) + 1 : 0;
+      })
     );
   };
   const activityData = useMemo(generateActivityData, []);
@@ -85,10 +88,10 @@ export default function DashboardHome() {
   const getActivityColor = (level) => {
     const shades = [
       "bg-gray-100",
-      "bg-teal-100",
-      "bg-teal-200",
-      "bg-teal-300",
-      "bg-teal-400",
+      "bg-green-300",
+      "bg-green-400",
+      "bg-green-500",
+      "bg-green-600",
     ];
     return shades[level] || "bg-gray-100";
   };
@@ -163,7 +166,7 @@ export default function DashboardHome() {
         {/* --- Welcome Section --- */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-[#1A3A37] mb-2">
-            Welcome Back, Sarah
+            Welcome Back, Dhyaneshvar
           </h1>
           <p className="text-gray-600">
             Continue your wellness journey with today's activities and insights.
