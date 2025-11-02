@@ -1,6 +1,6 @@
 """
-FastAPI application for video emotion analysis - Optimized with Frame Sampling
-No Grad-CAM in API | Videos kept in uploads folder
+FastAPI application for multimodal mental health analysis pipeline
+Combines video emotion detection, audio analysis, transcription, and text analysis
 """
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
@@ -15,31 +15,54 @@ import uuid
 from datetime import datetime
 import shutil
 import asyncio
+from enum import Enum
+import sys
+from multiprocessing import freeze_support
 
-from emotion_detector import EmotionDetector
+sys.path.insert(0, str(Path(__file__).parent))
 
-# ============================================================================
-# PYDANTIC MODELS
-# ============================================================================
+from parallel_pipeline import (
+    MultimodalAnalysisPipeline,
+    PrivacyMode,
+    MultimodalAnalysisResult
+)
+
+
+class PrivacyModeRequest(str, Enum):
+    FULL_PRIVACY = "full_privacy"
+    ANONYMIZED = "anonymized"
+
 
 class UploadResponse(BaseModel):
     task_id: str
     message: str
     status: str
     video_path: str
+    privacy_mode: str
+
 
 class StatusResponse(BaseModel):
     task_id: str
     status: str
     progress: float
     message: str
-    current_interval: Optional[int] = None
-    total_intervals: Optional[int] = None
+    stage: Optional[str] = None
 
 
-# ============================================================================
-# FILE MANAGER
-# ============================================================================
+class AnalysisResultResponse(BaseModel):
+    task_id: str
+    mental_health_score: int
+    risk_level: str
+    confidence: float
+    video_emotion: str
+    audio_emotion: str
+    text_emotion: str
+    depression_level: str
+    key_indicators: List[str]
+    recommendations: List[str]
+    areas_of_concern: List[str]
+    positive_indicators: List[str]
+
 
 class FileManager:
     """Manages file operations for the application"""
@@ -55,10 +78,10 @@ class FileManager:
         self.uploads_dir.mkdir(exist_ok=True)
         self.results_dir.mkdir(exist_ok=True)
         self.status_dir.mkdir(exist_ok=True)
-        print(f"📁 Directories initialized:")
-        print(f"   - Uploads: {self.uploads_dir}")
-        print(f"   - Results: {self.results_dir}")
-        print(f"   - Status: {self.status_dir}")
+        print(f"Directories initialized:")
+        print(f"  - Uploads: {self.uploads_dir}")
+        print(f"  - Results: {self.results_dir}")
+        print(f"  - Status: {self.status_dir}")
     
     def generate_task_id(self) -> str:
         """Generate a unique task ID"""
@@ -84,7 +107,7 @@ class FileManager:
         result_path = self.get_result_path(task_id)
         with open(result_path, 'w') as f:
             json.dump(result_data, f, indent=2)
-        print(f"💾 Result saved: {result_path}")
+        print(f"Result saved: {result_path}")
     
     def load_result(self, task_id: str) -> dict:
         """Load analysis result from JSON file"""
@@ -109,144 +132,132 @@ class FileManager:
         with open(status_path, 'r') as f:
             return json.load(f)
     
-    def delete_result(self, task_id: str):
-        """Delete result file"""
-        result_path = self.get_result_path(task_id)
-        if result_path.exists():
-            result_path.unlink()
-            print(f"🗑️  Deleted result: {result_path}")
-    
-    def delete_status(self, task_id: str):
-        """Delete status file"""
-        status_path = self.get_status_path(task_id)
-        if status_path.exists():
-            status_path.unlink()
-            print(f"🗑️  Deleted status: {status_path}")
-    
-    def delete_upload(self, task_id: str):
-        """Delete uploaded video file"""
-        for file in self.uploads_dir.glob(f"{task_id}.*"):
-            file.unlink()
-            print(f"🗑️  Deleted upload: {file}")
-    
-    def cleanup_task(self, task_id: str, keep_video: bool = True):
-        """Delete files associated with a task"""
-        if not keep_video:
-            self.delete_upload(task_id)
-        self.delete_result(task_id)
-        self.delete_status(task_id)
-        print(f"✅ Task {task_id} cleaned up (video kept: {keep_video})")
-    
     def get_video_path(self, task_id: str) -> Path:
         """Find the video file for a given task_id"""
         for file in self.uploads_dir.glob(f"{task_id}.*"):
             return file
         raise FileNotFoundError(f"Video not found for task {task_id}")
-
-
-# ============================================================================
-# PROGRESS TRACKER
-# ============================================================================
-
-class ProgressTracker:
-    """Track analysis progress and update status"""
     
-    def __init__(self, task_id: str, file_manager: FileManager):
-        self.task_id = task_id
-        self.file_manager = file_manager
-        self.current_interval = 0
-        self.total_intervals = 0
-    
-    async def update(self, current: int, total: int):
-        """Update progress status"""
-        self.current_interval = current
-        self.total_intervals = total
-        progress = (current / total * 100) if total > 0 else 0
+    def cleanup_task(self, task_id: str, keep_video: bool = True):
+        """Delete files associated with a task"""
+        if not keep_video:
+            for file in self.uploads_dir.glob(f"{task_id}.*"):
+                file.unlink()
+                print(f"Deleted upload: {file}")
         
-        status_data = {
-            'task_id': self.task_id,
-            'status': 'processing',
-            'progress': round(progress, 2),
-            'current_interval': current,
-            'total_intervals': total,
-            'message': f'Processing interval {current}/{total}'
-        }
+        result_path = self.get_result_path(task_id)
+        if result_path.exists():
+            result_path.unlink()
         
-        self.file_manager.save_status(self.task_id, status_data)
+        status_path = self.get_status_path(task_id)
+        if status_path.exists():
+            status_path.unlink()
+        
+        print(f"Task {task_id} cleaned up (video kept: {keep_video})")
 
 
-# ============================================================================
-# ANALYSIS SERVICE WITH FRAME SAMPLING
-# ============================================================================
-
-class AnalysisService:
-    """Service for managing emotion detection analysis with optimizations"""
+class MultimodalAnalysisService:
+    """Service for managing multimodal analysis pipeline"""
     
     def __init__(self):
-        self.detector = None
-        self._model_loaded = False
+        self.pipeline = None
+        self._pipeline_loaded = False
     
-    def _load_model(self):
-        """Lazy load the emotion detector model"""
-        if not self._model_loaded:
-            print("🔄 Loading emotion detection model...")
-            self.detector = EmotionDetector()
-            self._model_loaded = True
-            print("✅ Model loaded successfully")
+    def _load_pipeline(self):
+        """Lazy load the multimodal analysis pipeline"""
+        if not self._pipeline_loaded:
+            print("Loading multimodal analysis pipeline...")
+            self.pipeline = MultimodalAnalysisPipeline()
+            self._pipeline_loaded = True
+            print("Pipeline loaded successfully")
     
     async def analyze_video(
         self,
         video_path: Path,
         task_id: str,
         file_manager: FileManager,
+        privacy_mode: PrivacyMode,
         interval_seconds: int = 5,
         frame_skip: int = 2
     ) -> dict:
         """
-        Analyze video with frame sampling optimization
+        Perform complete multimodal analysis on video
         
         Args:
             video_path: Path to video file
             task_id: Unique task identifier
             file_manager: File management instance
+            privacy_mode: Privacy mode for text analysis
             interval_seconds: Seconds per analysis interval
-            frame_skip: Process every Nth frame (2 = process 1 out of 2 frames)
+            frame_skip: Process every Nth frame
         """
         try:
-            self._load_model()
-            progress_tracker = ProgressTracker(task_id, file_manager)
+            self._load_pipeline()
             
             file_manager.save_status(task_id, {
                 'task_id': task_id,
                 'status': 'processing',
-                'progress': 0.0,
-                'message': 'Starting analysis with frame sampling...'
+                'progress': 10.0,
+                'stage': 'initialization',
+                'message': 'Starting multimodal analysis'
+            })
+            
+            file_manager.save_status(task_id, {
+                'task_id': task_id,
+                'status': 'processing',
+                'progress': 30.0,
+                'stage': 'video_analysis',
+                'message': 'Analyzing video emotions'
+            })
+            
+            file_manager.save_status(task_id, {
+                'task_id': task_id,
+                'status': 'processing',
+                'progress': 50.0,
+                'stage': 'audio_analysis',
+                'message': 'Processing audio and transcription'
             })
             
             loop = asyncio.get_event_loop()
-            results = await loop.run_in_executor(
+            result = await loop.run_in_executor(
                 None,
                 self._run_analysis_sync,
                 video_path,
+                privacy_mode,
                 interval_seconds,
-                frame_skip,
-                progress_tracker
+                frame_skip
             )
+            
+            file_manager.save_status(task_id, {
+                'task_id': task_id,
+                'status': 'processing',
+                'progress': 80.0,
+                'stage': 'llm_assessment',
+                'message': 'Generating final assessment'
+            })
+            
+            result_dict = self._result_to_dict(result)
             
             file_manager.save_status(task_id, {
                 'task_id': task_id,
                 'status': 'completed',
                 'progress': 100.0,
-                'message': 'Analysis completed successfully'
+                'stage': 'completed',
+                'message': 'Multimodal analysis completed'
             })
             
-            return results
+            return result_dict
             
         except Exception as e:
+            print(f"Analysis error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
             file_manager.save_status(task_id, {
                 'task_id': task_id,
                 'status': 'failed',
                 'progress': 0.0,
+                'stage': 'error',
                 'message': f'Analysis failed: {str(e)}'
             })
             raise
@@ -254,40 +265,40 @@ class AnalysisService:
     def _run_analysis_sync(
         self,
         video_path: Path,
+        privacy_mode: PrivacyMode,
         interval_seconds: int,
-        frame_skip: int,
-        progress_tracker: ProgressTracker
-    ) -> dict:
-        """
-        Synchronous wrapper - calls optimized analysis method
-        NO GRAD-CAM in API analysis
-        """
-        return self.detector.analyze_video_by_intervals_optimized(
+        frame_skip: int
+    ) -> MultimodalAnalysisResult:
+        """Synchronous wrapper for pipeline analysis"""
+        return self.pipeline.analyze_video(
             video_path=str(video_path),
+            privacy_mode=privacy_mode,
             interval_seconds=interval_seconds,
             frame_skip=frame_skip,
-            progress_tracker=progress_tracker
+            cleanup=True
         )
+    
+    def _result_to_dict(self, result: MultimodalAnalysisResult) -> dict:
+        """Convert MultimodalAnalysisResult to dictionary"""
+        from dataclasses import asdict
+        return asdict(result)
 
-
-# ============================================================================
-# VIDEO SERVICE
-# ============================================================================
 
 class VideoService:
     """Service for managing video processing workflow"""
     
-    def __init__(self, file_manager: FileManager, analysis_service: AnalysisService):
+    def __init__(self, file_manager: FileManager, analysis_service: MultimodalAnalysisService):
         self.file_manager = file_manager
         self.analysis_service = analysis_service
     
     async def process_upload(
         self,
         file: UploadFile,
+        privacy_mode: PrivacyMode,
         interval_seconds: int,
         frame_skip: int,
         background_tasks: BackgroundTasks
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, str]:
         """Handle video upload and initiate analysis"""
         task_id = self.file_manager.generate_task_id()
         upload_path = self.file_manager.get_upload_path(task_id, file.filename)
@@ -295,7 +306,7 @@ class VideoService:
         try:
             with open(upload_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
-            print(f"📤 Video uploaded: {upload_path}")
+            print(f"Video uploaded: {upload_path}")
         finally:
             await file.close()
         
@@ -303,6 +314,7 @@ class VideoService:
             'task_id': task_id,
             'status': 'queued',
             'progress': 0.0,
+            'stage': 'queued',
             'message': 'Video uploaded. Analysis queued.'
         })
         
@@ -310,38 +322,41 @@ class VideoService:
             self._analyze_and_save,
             task_id=task_id,
             video_path=upload_path,
+            privacy_mode=privacy_mode,
             interval_seconds=interval_seconds,
             frame_skip=frame_skip
         )
         
-        return task_id, str(upload_path)
+        return task_id, str(upload_path), privacy_mode.value
     
     async def _analyze_and_save(
         self,
         task_id: str,
         video_path: Path,
+        privacy_mode: PrivacyMode,
         interval_seconds: int,
         frame_skip: int
     ):
-        """Background task: Analyze video and save results (video kept)"""
+        """Background task: Analyze video and save results"""
         try:
-            print(f"🎬 Starting analysis for task: {task_id}")
+            print(f"Starting multimodal analysis for task: {task_id}")
             
             results = await self.analysis_service.analyze_video(
                 video_path=video_path,
                 task_id=task_id,
                 file_manager=self.file_manager,
+                privacy_mode=privacy_mode,
                 interval_seconds=interval_seconds,
                 frame_skip=frame_skip
             )
             
             self.file_manager.save_result(task_id, results)
             
-            print(f"✅ Analysis completed for task: {task_id}")
-            print(f"📹 Video kept at: {video_path}")
+            print(f"Multimodal analysis completed for task: {task_id}")
+            print(f"Video kept at: {video_path}")
             
         except Exception as e:
-            print(f"❌ Analysis failed for task {task_id}: {str(e)}")
+            print(f"Analysis failed for task {task_id}: {str(e)}")
     
     async def get_task_status(self, task_id: str) -> Dict[str, Any]:
         """Get the current status of an analysis task"""
@@ -353,6 +368,7 @@ class VideoService:
                 'task_id': task_id,
                 'status': 'not_found',
                 'progress': 0.0,
+                'stage': 'not_found',
                 'message': 'Task not found'
             }
     
@@ -372,18 +388,14 @@ class VideoService:
         return self.file_manager.get_video_path(task_id)
     
     async def cleanup_task(self, task_id: str, delete_video: bool = False):
-        """Cleanup task files (video kept by default)"""
+        """Cleanup task files"""
         self.file_manager.cleanup_task(task_id, keep_video=not delete_video)
 
 
-# ============================================================================
-# FASTAPI APPLICATION
-# ============================================================================
-
 app = FastAPI(
-    title="Video Emotion Analysis API - Optimized",
-    description="Fast emotion analysis with frame sampling. Videos stored for Grad-CAM.",
-    version="2.0.0"
+    title="Multimodal Mental Health Analysis API",
+    description="Comprehensive mental health analysis combining video emotion detection, audio analysis, transcription, and text analysis",
+    version="1.0.0"
 )
 
 app.add_middleware(
@@ -394,9 +406,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize services
 file_manager = FileManager()
-analysis_service = AnalysisService()
+analysis_service = MultimodalAnalysisService()
 video_service = VideoService(file_manager, analysis_service)
 
 
@@ -404,34 +415,39 @@ video_service = VideoService(file_manager, analysis_service)
 async def startup_event():
     """Initialize required directories on startup"""
     file_manager.setup_directories()
-    print("✅ Application started successfully")
-    print("⚡ Frame sampling enabled for faster processing")
-    print("📹 Videos will be kept in uploads/ folder")
+    print("Application started successfully")
+    print("Multimodal mental health analysis pipeline ready")
+    print("Privacy modes: FULL_PRIVACY and ANONYMIZED available")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
-    print("🔄 Shutting down application...")
+    print("Shutting down application")
 
 
 @app.get("/")
 async def root():
     """Root endpoint"""
     return {
-        "message": "Video Emotion Analysis API - Optimized",
-        "version": "2.0.0",
+        "message": "Multimodal Mental Health Analysis API",
+        "version": "1.0.0",
         "features": [
-            "Frame sampling for 2-3x faster processing",
-            "Videos stored in uploads/ for Grad-CAM",
-            "No Grad-CAM computation in main API"
+            "Video emotion detection with frame sampling",
+            "Audio emotion analysis",
+            "Speech-to-text transcription",
+            "Text sentiment and depression analysis",
+            "Privacy-preserving modes",
+            "LLM-powered comprehensive assessment"
         ],
         "endpoints": {
             "upload": "/api/upload-video",
             "status": "/api/status/{task_id}",
             "result": "/api/result/{task_id}",
+            "summary": "/api/summary/{task_id}",
             "download": "/api/download-result/{task_id}",
-            "video": "/api/video/{task_id}"
+            "video": "/api/video/{task_id}",
+            "cleanup": "/api/cleanup/{task_id}"
         }
     }
 
@@ -441,7 +457,8 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
+        "pipeline_loaded": analysis_service._pipeline_loaded
     }
 
 
@@ -449,26 +466,23 @@ async def health_check():
 async def upload_video(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    privacy_mode: PrivacyModeRequest = PrivacyModeRequest.ANONYMIZED,
     interval_seconds: int = 5,
     frame_skip: int = 2
 ):
     """
-    Upload a video for emotion analysis (Optimized with frame sampling)
+    Upload a video for comprehensive multimodal mental health analysis
     
     Parameters:
     - file: Video file (mp4, avi, mov, etc.)
-    - interval_seconds: Analysis interval duration (default: 5)
-    - frame_skip: Process every Nth frame (default: 2, means 2x faster)
-      * 1 = process all frames (slowest, most accurate)
-      * 2 = process every 2nd frame (2x faster, recommended)
-      * 3 = process every 3rd frame (3x faster)
+    - privacy_mode: ANONYMIZED (recommended) or FULL_PRIVACY
+    - interval_seconds: Video analysis interval duration (default: 5)
+    - frame_skip: Process every Nth frame (default: 2)
     
     Returns:
     - task_id: Unique identifier for tracking analysis
     - video_path: Path where video is stored
-    - message: Status message
-    
-    Note: Video is kept in uploads/ for later Grad-CAM visualization
+    - privacy_mode: Selected privacy mode
     """
     try:
         if not file.filename:
@@ -482,14 +496,11 @@ async def upload_video(
                 detail=f"Invalid file type. Allowed: {', '.join(allowed_extensions)}"
             )
         
-        if frame_skip < 1:
-            raise HTTPException(
-                status_code=400,
-                detail="frame_skip must be >= 1"
-            )
+        privacy_enum = PrivacyMode(privacy_mode.value)
         
-        task_id, video_path = await video_service.process_upload(
+        task_id, video_path, privacy_value = await video_service.process_upload(
             file=file,
+            privacy_mode=privacy_enum,
             interval_seconds=interval_seconds,
             frame_skip=frame_skip,
             background_tasks=background_tasks
@@ -497,9 +508,10 @@ async def upload_video(
         
         return UploadResponse(
             task_id=task_id,
-            message=f"Video uploaded. Analysis started with frame_skip={frame_skip}.",
+            message=f"Video uploaded. Multimodal analysis started with {privacy_mode.value} mode.",
             status="processing",
-            video_path=video_path
+            video_path=video_path,
+            privacy_mode=privacy_value
         )
         
     except HTTPException:
@@ -511,14 +523,15 @@ async def upload_video(
 @app.get("/api/status/{task_id}", response_model=StatusResponse)
 async def get_analysis_status(task_id: str):
     """
-    Get the status of a video analysis task
+    Get the status of a multimodal analysis task
     
     Parameters:
     - task_id: Task identifier from upload
     
     Returns:
-    - status: processing|completed|failed|not_found
+    - status: queued|processing|completed|failed|not_found
     - progress: Progress percentage (0-100)
+    - stage: Current processing stage
     - message: Status message
     """
     try:
@@ -531,13 +544,13 @@ async def get_analysis_status(task_id: str):
 @app.get("/api/result/{task_id}")
 async def get_analysis_result(task_id: str):
     """
-    Get the complete analysis result
+    Get the complete multimodal analysis result
     
     Parameters:
     - task_id: Task identifier
     
     Returns:
-    - Complete JSON with interval scores and summary
+    - Complete JSON with all analysis components
     """
     try:
         result = await video_service.get_analysis_result(task_id)
@@ -548,10 +561,47 @@ async def get_analysis_result(task_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/summary/{task_id}", response_model=AnalysisResultResponse)
+async def get_analysis_summary(task_id: str):
+    """
+    Get a simplified summary of the analysis result
+    
+    Parameters:
+    - task_id: Task identifier
+    
+    Returns:
+    - Structured summary with key metrics and recommendations
+    """
+    try:
+        result = await video_service.get_analysis_result(task_id)
+        
+        summary = result.get('summary', {})
+        llm_assessment = result.get('llm_final_assessment', {})
+        
+        return AnalysisResultResponse(
+            task_id=task_id,
+            mental_health_score=summary.get('mental_health_score', 0),
+            risk_level=summary.get('risk_level', 'unknown'),
+            confidence=summary.get('confidence', 0.0),
+            video_emotion=summary.get('video_emotion', 'neutral'),
+            audio_emotion=summary.get('audio_emotion', 'neutral'),
+            text_emotion=summary.get('text_emotion', 'neutral'),
+            depression_level=summary.get('depression_level', 'unknown'),
+            key_indicators=llm_assessment.get('key_indicators', []),
+            recommendations=llm_assessment.get('recommendations', []),
+            areas_of_concern=llm_assessment.get('areas_of_concern', []),
+            positive_indicators=llm_assessment.get('positive_indicators', [])
+        )
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Result not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/download-result/{task_id}")
 async def download_result(task_id: str):
     """
-    Download the analysis result as a JSON file
+    Download the complete analysis result as a JSON file
     
     Parameters:
     - task_id: Task identifier
@@ -568,7 +618,7 @@ async def download_result(task_id: str):
         return FileResponse(
             path=result_path,
             media_type="application/json",
-            filename=f"emotion_analysis_{task_id}.json"
+            filename=f"multimodal_analysis_{task_id}.json"
         )
     except HTTPException:
         raise
@@ -579,13 +629,13 @@ async def download_result(task_id: str):
 @app.get("/api/video/{task_id}")
 async def get_video(task_id: str):
     """
-    Get the uploaded video file (for Grad-CAM visualization)
+    Get information about the uploaded video file
     
     Parameters:
     - task_id: Task identifier
     
     Returns:
-    - Video file path information
+    - Video file path and metadata
     """
     try:
         video_path = await video_service.get_video_path(task_id)
@@ -624,9 +674,11 @@ async def cleanup_task(task_id: str, delete_video: bool = False):
 
 
 if __name__ == "__main__":
+    freeze_support()
+    
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8000,
-        reload=True
+        port=8001,
+        reload=False
     )
