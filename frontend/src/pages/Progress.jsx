@@ -387,7 +387,7 @@ export default function Progress() {
 
           <div className="space-y-4">
             {/* Privacy Mode Toggle */}
-            <div className="bg-gradient-to-r from-green-50 to-teal-50 rounded-xl p-4 border border-green-200 mb-4">
+            <div className="bg-linear-to-r from-green-50 to-teal-50 rounded-xl p-4 border border-green-200 mb-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   {textPrivacyMode === "full_privacy" ? (
@@ -480,7 +480,7 @@ export default function Progress() {
 
           <div className="space-y-4">
             {/* Privacy Mode Toggle */}
-            <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4 border border-blue-200">
+            <div className="bg-linear-to-r from-blue-50 to-purple-50 rounded-xl p-4 border border-blue-200">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   {privacyMode === "full_privacy" ? (

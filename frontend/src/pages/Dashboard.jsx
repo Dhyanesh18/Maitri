@@ -184,7 +184,7 @@ export default function Dashboard() {
         {/* Main Dashboard Content */}
         <main className="p-6">
           {/* Welcome Section */}
-          <div className="bg-gradient-to-r from-teal-500 to-blue-600 rounded-xl p-8 text-white mb-8">
+          <div className="bg-linear-to-r from-teal-500 to-blue-600 rounded-xl p-8 text-white mb-8">
             <h2 className="text-3xl font-bold mb-4">
               Welcome to Your Mental Wellness Journey
             </h2>
@@ -461,7 +461,7 @@ export default function Dashboard() {
               </div>
 
               {/* Daily Quote */}
-              <div className="bg-gradient-to-br from-pink-100 to-purple-100 rounded-xl p-6">
+              <div className="bg-linear-to-br from-pink-100 to-purple-100 rounded-xl p-6">
                 <h3 className="text-lg font-bold text-gray-900 mb-4">
                   Daily Inspiration
                 </h3>

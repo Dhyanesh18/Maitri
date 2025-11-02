@@ -360,7 +360,7 @@ export default function Sessions() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={isLoading}
-            className="flex-shrink-0 p-3 text-gray-500 hover:text-[#1A3A37] hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="shrink-0 p-3 text-gray-500 hover:text-[#1A3A37] hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Paperclip className="w-5 h-5" />
           </button>
@@ -387,7 +387,7 @@ export default function Sessions() {
             disabled={
               (!inputValue.trim() && uploadedFiles.length === 0) || isLoading
             }
-            className="flex-shrink-0 p-3 bg-[#1A3A37] text-white rounded-full hover:bg-[#154F4A] disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            className="shrink-0 p-3 bg-[#1A3A37] text-white rounded-full hover:bg-[#154F4A] disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
           >
             {isLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
