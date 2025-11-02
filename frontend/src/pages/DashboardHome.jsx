@@ -1,288 +1,246 @@
-import React from "react";
+import React, { useState, useMemo } from "react";
+import {
+  Calendar,
+  BookOpen,
+  Heart,
+  TrendingUp,
+  Edit3,
+  CheckCircle,
+} from "lucide-react";
 
 export default function DashboardHome() {
+  const [quizTaken, setQuizTaken] = useState(true);
+
+  // --- Generate Activity Data ---
+  const generateActivityData = () => {
+    const WEEKS = 16;
+    const DAYS = 7;
+    return Array.from({ length: WEEKS }, () =>
+      Array.from({ length: DAYS }, () => Math.floor(Math.random() * 5))
+    );
+  };
+  const activityData = useMemo(generateActivityData, []);
+
+  const getActivityColor = (level) => {
+    const shades = [
+      "bg-gray-100",
+      "bg-teal-100",
+      "bg-teal-200",
+      "bg-teal-300",
+      "bg-teal-400",
+    ];
+    return shades[level] || "bg-gray-100";
+  };
+
+  const articles = [
+    {
+      title: "Managing Daily Stress",
+      desc: "Simple techniques to reduce stress and find balance.",
+      readTime: "5 min read",
+    },
+    {
+      title: "Building Resilience",
+      desc: "Strengthen your ability to bounce back from challenges.",
+      readTime: "6 min read",
+    },
+    {
+      title: "Mindful Breathing",
+      desc: "Learn breathing exercises to calm your mind.",
+      readTime: "4 min read",
+    },
+    {
+      title: "Sleep & Wellness",
+      desc: "Improve your sleep quality for better mental health.",
+      readTime: "7 min read",
+    },
+  ];
+
   return (
-    <div className="p-6 w-full min-w-0 max-w-none">
-      {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-teal-500 to-blue-600 rounded-xl p-8 text-white mb-8">
-        <h2 className="text-3xl font-bold mb-4">
-          Welcome to Your Mental Wellness Journey
-        </h2>
-        <p className="text-lg opacity-90 mb-6">
-          Take control of your mental health with personalized resources and
-          professional support.
-        </p>
-        <button className="bg-white text-teal-600 px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors">
-          Start Today's Session
-        </button>
-      </div>
+    <div className="min-h-screen bg-white p-6">
+      <div className="max-w-6xl mx-auto space-y-6">
+        {/* --- Welcome Section --- */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-[#1A3A37] mb-2">
+            Welcome Back, Sarah
+          </h1>
+          <p className="text-gray-600">
+            Continue your wellness journey with today's activities and insights.
+          </p>
+        </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white rounded-xl p-6 shadow-lg">
-          <div className="flex items-center">
-            <div className="p-3 rounded-full bg-green-100">
-              <svg
-                className="w-6 h-6 text-green-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">
-                Sessions Completed
+        {/* --- Activity Heatmap --- */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-xl font-bold text-[#1A3A37] mb-1">
+                Your Activity
+              </h2>
+              <p className="text-gray-600 text-sm">
+                Keep up the consistency 🌱
               </p>
-              <p className="text-2xl font-bold text-gray-900">12</p>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <span>Less</span>
+              <div className="flex gap-1">
+                {[0, 1, 2, 3, 4].map((lvl) => (
+                  <div
+                    key={lvl}
+                    className={`w-3 h-3 rounded ${getActivityColor(lvl)}`}
+                  />
+                ))}
+              </div>
+              <span>More</span>
+            </div>
+          </div>
+
+          <div className="w-full overflow-x-auto">
+            <div className="flex justify-center">
+              <div className="inline-flex gap-1">
+                {activityData.map((week, i) => (
+                  <div key={i} className="flex flex-col gap-1">
+                    {week.map((day, j) => (
+                      <div
+                        key={j}
+                        className={`w-3 h-3 rounded ${getActivityColor(
+                          day
+                        )} hover:scale-110 transition-transform cursor-pointer`}
+                        title={`Activity level: ${day}`}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl p-6 shadow-lg">
-          <div className="flex items-center">
-            <div className="p-3 rounded-full bg-blue-100">
-              <svg
-                className="w-6 h-6 text-blue-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
-                />
-              </svg>
+        {/* --- Daily Quiz & Support --- */}
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Daily Quiz Card */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-blue-50 p-3 rounded-xl">
+                {quizTaken ? (
+                  <CheckCircle className="w-5 h-5 text-blue-600" />
+                ) : (
+                  <Calendar className="w-5 h-5 text-blue-600" />
+                )}
+              </div>
+              <span className="text-xs text-gray-500 font-medium">
+                DAILY CHECK-IN
+              </span>
             </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">
-                Progress Score
-              </p>
-              <p className="text-2xl font-bold text-gray-900">85%</p>
-            </div>
-          </div>
-        </div>
 
-        <div className="bg-white rounded-xl p-6 shadow-lg">
-          <div className="flex items-center">
-            <div className="p-3 rounded-full bg-purple-100">
-              <svg
-                className="w-6 h-6 text-purple-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">
-                Time Practiced
-              </p>
-              <p className="text-2xl font-bold text-gray-900">24h</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl p-6 shadow-lg">
-          <div className="flex items-center">
-            <div className="p-3 rounded-full bg-orange-100">
-              <svg
-                className="w-6 h-6 text-orange-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                />
-              </svg>
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Mood Score</p>
-              <p className="text-2xl font-bold text-gray-900">7.2</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Dashboard Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left Column */}
-        <div className="lg:col-span-2 space-y-8">
-          {/* Today's Activities */}
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <h3 className="text-xl font-bold text-gray-900 mb-6">
-              Today's Activities
+            <h3 className="text-lg font-bold text-[#1A3A37] mb-2">
+              {quizTaken ? "Check-in Complete" : "Daily Wellness Quiz"}
             </h3>
-            <div className="space-y-4">
-              <div className="flex items-center p-4 bg-teal-50 rounded-lg">
-                <div className="p-2 bg-teal-100 rounded-lg">
-                  <span className="text-2xl">🧘</span>
-                </div>
-                <div className="ml-4 flex-1">
-                  <h4 className="font-semibold text-gray-900">
-                    Morning Meditation
-                  </h4>
-                  <p className="text-gray-600">
-                    10 minutes • Breathing exercises
-                  </p>
-                </div>
-                <button className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700">
-                  Start
-                </button>
-              </div>
+            <p className="text-gray-600 text-sm mb-4">
+              {quizTaken
+                ? "Great job! You've completed today's wellness check."
+                : "Take a quick 2-minute quiz to check your wellbeing."}
+            </p>
 
-              <div className="flex items-center p-4 bg-blue-50 rounded-lg">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <span className="text-2xl">📝</span>
-                </div>
-                <div className="ml-4 flex-1">
-                  <h4 className="font-semibold text-gray-900">Mood Journal</h4>
-                  <p className="text-gray-600">
-                    Reflect on your feelings today
-                  </p>
-                </div>
-                <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-                  Write
-                </button>
+            {!quizTaken ? (
+              <button
+                onClick={() => setQuizTaken(true)}
+                className="bg-[#1A3A37] text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-[#154F4A] transition-colors"
+              >
+                Start Check-in
+              </button>
+            ) : (
+              <div className="flex items-center text-teal-600 text-sm">
+                <TrendingUp className="w-4 h-4 mr-2" />
+                <span>7-day streak</span>
               </div>
-
-              <div className="flex items-center p-4 bg-purple-50 rounded-lg">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <span className="text-2xl">💬</span>
-                </div>
-                <div className="ml-4 flex-1">
-                  <h4 className="font-semibold text-gray-900">
-                    Therapy Session
-                  </h4>
-                  <p className="text-gray-600">3:00 PM • Dr. Sarah Johnson</p>
-                </div>
-                <button className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700">
-                  Join
-                </button>
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* Progress Chart */}
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <h3 className="text-xl font-bold text-gray-900 mb-6">
-              Weekly Progress
+          {/* Support Card */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-rose-50 p-3 rounded-xl">
+                <Heart className="w-5 h-5 text-rose-500" />
+              </div>
+              <span className="text-xs text-gray-500 font-medium">SUPPORT</span>
+            </div>
+
+            <h3 className="text-lg font-bold text-[#1A3A37] mb-2">
+              Need Support?
             </h3>
-            <div className="h-64 bg-gray-100 rounded-lg flex items-center justify-center">
-              <div className="text-center">
-                <div className="text-4xl mb-2">📊</div>
-                <p className="text-gray-600">
-                  Progress chart will be displayed here
+            <p className="text-gray-600 text-sm mb-4">
+              Access breathing exercises and guided meditation instantly.
+            </p>
+
+            <button className="border border-[#1A3A37] text-[#1A3A37] px-4 py-2 rounded-full text-sm font-medium hover:bg-[#1A3A37] hover:text-white transition-colors">
+              Get Help Now
+            </button>
+          </div>
+        </div>
+
+        {/* --- Journal Section --- */}
+        <section className="bg-white rounded-2xl p-8 shadow-sm">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+            <div className="flex items-start gap-4 flex-1">
+              <div className="bg-green-100 p-4 rounded-xl">
+                <Edit3 className="w-8 h-8 text-green-600" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-800 mb-1">
+                  Journal Your Thoughts
+                </h3>
+                <p className="text-gray-600 text-sm mb-4">
+                  Reflect on your emotions and track your growth daily.
                 </p>
+                <div className="flex gap-4 text-sm text-gray-500">
+                  <span>15 entries this month</span>
+                  <span>Last entry: 2 days ago</span>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Right Column */}
-        <div className="space-y-8">
-          {/* Quick Actions */}
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <h3 className="text-xl font-bold text-gray-900 mb-6">
-              Quick Actions
-            </h3>
-            <div className="space-y-3">
-              <button className="w-full text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                <div className="flex items-center">
-                  <span className="text-xl mr-3">🎯</span>
-                  <span className="font-medium">Set Daily Goal</span>
-                </div>
-              </button>
-              <button className="w-full text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                <div className="flex items-center">
-                  <span className="text-xl mr-3">📚</span>
-                  <span className="font-medium">Browse Resources</span>
-                </div>
-              </button>
-              <button className="w-full text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                <div className="flex items-center">
-                  <span className="text-xl mr-3">👥</span>
-                  <span className="font-medium">Join Community</span>
-                </div>
-              </button>
-              <button className="w-full text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                <div className="flex items-center">
-                  <span className="text-xl mr-3">⚙️</span>
-                  <span className="font-medium">Settings</span>
-                </div>
-              </button>
+            <button className="bg-green-600 text-white px-6 py-3 rounded-full font-semibold hover:bg-green-700 transition">
+              Start Writing
+            </button>
+          </div>
+        </section>
+
+        {/* --- Articles Section --- */}
+        <section>
+          <header className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-800">
+                Wellness Resources
+              </h2>
+              <p className="text-gray-500 text-sm">
+                Expert tips and guides for your mental wellbeing
+              </p>
             </div>
-          </div>
+            <button className="text-green-700 font-semibold hover:underline">
+              View All →
+            </button>
+          </header>
 
-          {/* Upcoming Sessions */}
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <h3 className="text-xl font-bold text-gray-900 mb-6">
-              Upcoming Sessions
-            </h3>
-            <div className="space-y-4">
-              <div className="p-3 border border-gray-200 rounded-lg">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h4 className="font-semibold text-gray-900">
-                      Dr. Sarah Johnson
-                    </h4>
-                    <p className="text-sm text-gray-600">Individual Therapy</p>
-                    <p className="text-sm text-teal-600">Today, 3:00 PM</p>
-                  </div>
-                  <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
-                    Confirmed
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
+            {articles.map((a, i) => (
+              <article
+                key={i}
+                className="bg-white rounded-2xl shadow-sm hover:shadow-md p-6 transition cursor-pointer"
+              >
+                <div className="text-4xl mb-3">{a.icon}</div>
+                <h4 className="font-semibold text-gray-800 mb-1">{a.title}</h4>
+                <p className="text-gray-600 text-sm mb-4">{a.desc}</p>
+                <div className="flex items-center justify-between text-sm text-gray-500">
+                  <span className="flex items-center">
+                    <BookOpen className="w-4 h-4 mr-1" /> {a.readTime}
+                  </span>
+                  <span className="text-green-600 font-semibold hover:underline">
+                    Read →
                   </span>
                 </div>
-              </div>
-
-              <div className="p-3 border border-gray-200 rounded-lg">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h4 className="font-semibold text-gray-900">
-                      Group Therapy
-                    </h4>
-                    <p className="text-sm text-gray-600">Anxiety Support</p>
-                    <p className="text-sm text-teal-600">Tomorrow, 10:00 AM</p>
-                  </div>
-                  <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
-                    Scheduled
-                  </span>
-                </div>
-              </div>
-            </div>
+              </article>
+            ))}
           </div>
-
-          {/* Daily Quote */}
-          <div className="bg-gradient-to-br from-pink-100 to-purple-100 rounded-xl p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">
-              Daily Inspiration
-            </h3>
-            <blockquote className="text-gray-700 italic mb-3">
-              "The greatest revolution of our generation is the discovery that
-              human beings, by changing the inner attitudes of their minds, can
-              change the outer aspects of their lives."
-            </blockquote>
-            <cite className="text-sm text-gray-600">— William James</cite>
-          </div>
-        </div>
+        </section>
       </div>
     </div>
   );
