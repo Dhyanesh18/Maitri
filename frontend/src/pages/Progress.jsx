@@ -33,6 +33,8 @@ export default function Progress() {
   const [privacyMode, setPrivacyMode] = useState("anonymized"); // "anonymized" or "full_privacy"
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState("");
+  const [textPrivacyMode, setTextPrivacyMode] = useState("anonymized");
+  const [isAnalyzingText, setIsAnalyzingText] = useState(false);
   const videoRef = useRef(null);
   const previewRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -135,24 +137,65 @@ export default function Progress() {
     }
   };
 
-  const saveJournalEntry = () => {
+  const saveJournalEntry = async () => {
     if (journalText.trim()) {
-      // In a real app, this would save to a database
-      console.log("Saving journal entry:", journalText);
+      try {
+        setIsAnalyzingText(true);
 
-      // Show success toast
-      toast.success("Journal entry saved successfully!", {
-        position: "top-right",
-        autoClose: 3000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-      });
+        const response = await fetch(
+          "http://localhost:8000/api/analyze-text-journal",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              text: journalText,
+              privacy_mode: textPrivacyMode,
+            }),
+          }
+        );
 
-      setJournalText("");
-      setJournalStreak(journalStreak + 1);
-      setLastJournalDate("Today");
+        if (!response.ok) {
+          throw new Error(`Analysis failed: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+
+        toast.success("Journal analyzed successfully!", {
+          position: "top-right",
+          autoClose: 3000,
+        });
+
+        // Display results
+        console.log("Text Journal Analysis:", result);
+        displayTextAnalysisResults(result);
+
+        // Clear form
+        setJournalText("");
+        setJournalStreak(journalStreak + 1);
+        setLastJournalDate("Today");
+        setIsAnalyzingText(false);
+      } catch (error) {
+        console.error("Text journal analysis failed:", error);
+        toast.error("Failed to analyze journal entry.", {
+          position: "top-right",
+          autoClose: 5000,
+        });
+        setIsAnalyzingText(false);
+      }
     }
+  };
+
+  const displayTextAnalysisResults = (result) => {
+    console.log("Mental Health Score:", result.mental_health_score);
+    console.log("Risk Level:", result.risk_level);
+    console.log("Dominant Emotion:", result.dominant_emotion);
+    console.log("Depression Level:", result.depression_level);
+    console.log("Key Indicators:", result.key_indicators);
+    console.log("Recommendations:", result.recommendations);
+
+    // TODO: Show in UI modal/component
   };
 
   const handleVideoUpload = async (e) => {
@@ -343,6 +386,50 @@ export default function Progress() {
           </div>
 
           <div className="space-y-4">
+            {/* Privacy Mode Toggle */}
+            <div className="bg-gradient-to-r from-green-50 to-teal-50 rounded-xl p-4 border border-green-200 mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  {textPrivacyMode === "full_privacy" ? (
+                    <ShieldCheck className="w-5 h-5 text-purple-600" />
+                  ) : (
+                    <Shield className="w-5 h-5 text-green-600" />
+                  )}
+                  <h3 className="text-base font-semibold text-gray-800">
+                    Privacy Mode
+                  </h3>
+                </div>
+                <button
+                  onClick={() =>
+                    setTextPrivacyMode((prev) =>
+                      prev === "anonymized" ? "full_privacy" : "anonymized"
+                    )
+                  }
+                  className={`relative inline-flex h-8 w-16 items-center rounded-full transition-colors ${
+                    textPrivacyMode === "full_privacy"
+                      ? "bg-purple-600"
+                      : "bg-green-500"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
+                      textPrivacyMode === "full_privacy"
+                        ? "translate-x-9"
+                        : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="text-xs text-gray-600">
+                {textPrivacyMode === "anonymized" ? (
+                  <p>Names and personal details will be anonymized before analysis</p>
+                ) : (
+                  <p>Maximum privacy - only emotion/depression scores sent to LLM</p>
+                )}
+              </div>
+            </div>
+
             <textarea
               value={journalText}
               onChange={(e) => setJournalText(e.target.value)}
@@ -356,11 +443,20 @@ export default function Progress() {
               </p>
               <button
                 onClick={saveJournalEntry}
-                disabled={!journalText.trim()}
+                disabled={!journalText.trim() || isAnalyzingText}
                 className="flex items-center gap-2 bg-[#1A3A37] text-white px-6 py-2 rounded-full font-medium hover:bg-[#154F4A] disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
               >
-                <Save className="w-4 h-4" />
-                Save Entry
+                {isAnalyzingText ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    Save Entry
+                  </>
+                )}
               </button>
             </div>
           </div>

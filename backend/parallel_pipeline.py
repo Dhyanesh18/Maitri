@@ -493,17 +493,25 @@ Use these full distributions to:
 3. Detect subtle patterns across modalities
 4. Provide more nuanced risk assessment
 
-Provide comprehensive assessment as JSON:
+Provide comprehensive assessment as JSON with SPECIFIC SCORES and DIRECT recommendations:
 {{
     "overall_mental_health_score": 0-100,
+    "depression_score": 0-100,
+    "anxiety_score": 0-100,
+    "stress_score": 0-100,
     "risk_level": "low/moderate/high/critical",
     "confidence": 0.0-1.0,
     "key_indicators": ["indicator1", "indicator2"],
-    "recommendations": ["rec1", "rec2"],
+    "recommendations": ["You should...", "Consider...", "Try..."],
     "areas_of_concern": ["concern1", "concern2"],
     "positive_indicators": ["positive1", "positive2"],
     "distribution_insights": "Analysis of probability distributions and mixed states"
 }}
+
+CRITICAL: Write ALL recommendations in SECOND PERSON (address the person directly as 'you', not 'they' or 'the user').
+Examples:
+- Good: "You should consider speaking with a therapist"
+- Bad: "The user should consider speaking with a therapist"
 """
         
         try:
@@ -544,6 +552,9 @@ Provide comprehensive assessment as JSON:
         
         return {
             "mental_health_score": llm_assessment['overall_mental_health_score'],
+            "depression_score": llm_assessment.get('depression_score', 0),  # NEW
+            "anxiety_score": llm_assessment.get('anxiety_score', 0),        # NEW
+            "stress_score": llm_assessment.get('stress_score', 0),          # NEW
             "risk_level": llm_assessment['risk_level'],
             "confidence": llm_assessment['confidence'],
             "video_emotion": dominant_video,

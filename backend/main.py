@@ -29,7 +29,9 @@ from parallel_pipeline import (
     MultimodalAnalysisResult
 )
 from emotional_support_chatbot import EmotionalSupportChatbot
-
+from audio.text_analysis_pii_removal import remove_pii, analyze_text_emotion as analyze_text_llm
+from audio.text_classification import analyze_text_emotion as analyze_emotion_local
+from audio.depression_text import analyze_text_depression
 
 class PrivacyModeRequest(str, Enum):
     FULL_PRIVACY = "full_privacy"
@@ -55,6 +57,9 @@ class StatusResponse(BaseModel):
 class AnalysisResultResponse(BaseModel):
     task_id: str
     mental_health_score: int
+    depression_score: int  # NEW
+    anxiety_score: int     # NEW
+    stress_score: int      # NEW
     risk_level: str
     confidence: float
     video_emotion: str
@@ -65,6 +70,28 @@ class AnalysisResultResponse(BaseModel):
     recommendations: List[str]
     areas_of_concern: List[str]
     positive_indicators: List[str]
+
+
+class TextJournalRequest(BaseModel):
+    text: str
+    privacy_mode: PrivacyModeRequest
+    session_id: Optional[str] = None
+
+
+class TextJournalResponse(BaseModel):
+    success: bool
+    journal_id: str
+    mental_health_score: int
+    depression_score: int  # NEW
+    anxiety_score: int     # NEW
+    stress_score: int      # NEW
+    risk_level: str
+    confidence: float
+    dominant_emotion: str
+    depression_level: str
+    key_indicators: List[str]
+    recommendations: List[str]
+    analysis_summary: Dict[str, Any]
 
 
 class FileManager:
@@ -489,10 +516,7 @@ async def health_check():
 
 @app.post("/api/upload-video", response_model=AnalysisResultResponse)
 async def upload_video(
-    # File is correctly defined
     file: UploadFile = File(...),
-    
-    # All other parameters MUST use Form()
     privacy_mode: PrivacyModeRequest = Form(PrivacyModeRequest.ANONYMIZED),
     interval_seconds: int = Form(5),
     frame_skip: int = Form(2)
@@ -642,6 +666,9 @@ async def upload_video(
     return AnalysisResultResponse(
         task_id=task_id,
         mental_health_score=summary.get('mental_health_score', 0),
+        depression_score=summary.get('depression_score', 0),  # NEW
+        anxiety_score=summary.get('anxiety_score', 0),        # NEW
+        stress_score=summary.get('stress_score', 0),          # NEW
         risk_level=summary.get('risk_level', 'unknown'),
         confidence=summary.get('confidence', 0.0),
         video_emotion=summary.get('video_emotion', 'neutral'),
@@ -653,6 +680,7 @@ async def upload_video(
         areas_of_concern=llm_assessment.get('areas_of_concern', []),
         positive_indicators=llm_assessment.get('positive_indicators', [])
     )
+
 
 @app.get("/api/status/{task_id}", response_model=StatusResponse)
 async def get_analysis_status(task_id: str):
@@ -715,6 +743,9 @@ async def get_analysis_summary(task_id: str):
         return AnalysisResultResponse(
             task_id=task_id,
             mental_health_score=summary.get('mental_health_score', 0),
+            depression_score=summary.get('depression_score', 0),  # NEW
+            anxiety_score=summary.get('anxiety_score', 0),        # NEW
+            stress_score=summary.get('stress_score', 0),          # NEW
             risk_level=summary.get('risk_level', 'unknown'),
             confidence=summary.get('confidence', 0.0),
             video_emotion=summary.get('video_emotion', 'neutral'),
@@ -893,6 +924,153 @@ async def list_chat_sessions():
         "count": len(sessions),
         "sessions": sessions
     }
+
+
+@app.post("/api/analyze-text-journal", response_model=TextJournalResponse)
+async def analyze_text_journal(request: TextJournalRequest):
+    """
+    Analyze text journal entry with privacy options
+    
+    Privacy Modes:
+    - ANONYMIZED: NER removes PII, sends anonymized text to LLM for scoring
+    - FULL_PRIVACY: Only local classifiers (emotion + depression), then LLM scores distributions
+    """
+    try:
+        journal_id = file_manager.generate_task_id()
+        
+        print(f"\n--- Text Journal Analysis Started ---")
+        print(f"Journal ID: {journal_id}")
+        print(f"Privacy Mode: {request.privacy_mode.value}")
+        print(f"Text Length: {len(request.text)} characters")
+        
+        # Run local classifiers (always)
+        emotion_result = analyze_emotion_local(request.text)
+        depression_result = analyze_text_depression(request.text)
+        
+        if request.privacy_mode == PrivacyModeRequest.FULL_PRIVACY:
+            # FULL PRIVACY: Only distributions to LLM
+            print("Mode: Full Privacy - Using only classifier distributions")
+            
+            llm_prompt = f"""Analyze this mental health assessment data:
+
+EMOTION ANALYSIS (Classifier Distribution):
+{json.dumps(emotion_result['emotion_scores'], indent=2)}
+- Dominant: {emotion_result['dominant_emotion']}
+
+DEPRESSION ANALYSIS:
+- Level: {depression_result['depression_level']}
+- Confidence: {depression_result['confidence']:.2f}
+- Severity: {depression_result['severity']}/10
+
+NO TEXT PROVIDED (Full Privacy Mode)
+
+Provide assessment as JSON with specific scores and DIRECT recommendations:
+{{
+    "mental_health_score": 0-100,
+    "depression_score": 0-100,
+    "anxiety_score": 0-100,
+    "stress_score": 0-100,
+    "risk_level": "low/moderate/high/critical",
+    "confidence": 0.0-1.0,
+    "key_indicators": ["indicator1", "indicator2"],
+    "recommendations": ["You should...", "Consider..."]
+}}
+
+IMPORTANT: Write recommendations in SECOND PERSON (address the person directly as 'you', not 'they' or 'the user')."""
+
+        else:
+            # ANONYMIZED: Remove PII, send to LLM
+            print("Mode: Anonymized - Removing PII and sending to LLM")
+            
+            anonymized_text = remove_pii(request.text)  # ADD THIS LINE
+            
+            llm_prompt = f"""Analyze this mental health journal entry:
+
+ANONYMIZED TEXT:
+"{anonymized_text}"
+
+LOCAL CLASSIFIER RESULTS:
+Emotion Distribution: {json.dumps(emotion_result['emotion_scores'], indent=2)}
+Dominant Emotion: {emotion_result['dominant_emotion']}
+
+Depression Analysis:
+- Level: {depression_result['depression_level']}
+- Severity: {depression_result['severity']}/10
+- Confidence: {depression_result['confidence']:.2f}
+
+Provide comprehensive assessment as JSON with specific scores and DIRECT recommendations:
+{{
+    "mental_health_score": 0-100,
+    "depression_score": 0-100,
+    "anxiety_score": 0-100,
+    "stress_score": 0-100,
+    "risk_level": "low/moderate/high/critical",
+    "confidence": 0.0-1.0,
+    "key_indicators": ["indicator1", "indicator2"],
+    "recommendations": ["You should...", "Consider..."]
+}}
+
+IMPORTANT: Write recommendations in SECOND PERSON (address the person directly as 'you', not 'they' or 'the user')."""
+
+        # Get LLM assessment
+        from groq import Groq
+        groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        
+        response = groq_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": "You are a mental health assessment expert. Provide comprehensive analysis in JSON format."},
+                {"role": "user", "content": llm_prompt}
+            ],
+            temperature=0.2,
+            response_format={"type": "json_object"}
+        )
+        
+        llm_assessment = json.loads(response.choices[0].message.content)
+        
+        # Save complete results
+        complete_result = {
+            "journal_id": journal_id,
+            "timestamp": datetime.utcnow().isoformat(),
+            "privacy_mode": request.privacy_mode.value,
+            "text_length": len(request.text),
+            "emotion_analysis": emotion_result,
+            "depression_analysis": depression_result,
+            "llm_assessment": llm_assessment
+        }
+        
+        # Save to results directory
+        journal_path = file_manager.results_dir / f"{journal_id}_text_journal.json"
+        with open(journal_path, 'w') as f:
+            json.dump(complete_result, f, indent=2)
+        
+        print(f"Text journal analysis completed: {journal_id}")
+        
+        return TextJournalResponse(
+            success=True,
+            journal_id=journal_id,
+            mental_health_score=llm_assessment['mental_health_score'],
+            depression_score=llm_assessment['depression_score'],  # NEW
+            anxiety_score=llm_assessment['anxiety_score'],        # NEW
+            stress_score=llm_assessment['stress_score'],          # NEW
+            risk_level=llm_assessment['risk_level'],
+            confidence=llm_assessment['confidence'],
+            dominant_emotion=emotion_result['dominant_emotion'],
+            depression_level=depression_result['depression_level'],
+            key_indicators=llm_assessment['key_indicators'],
+            recommendations=llm_assessment['recommendations'],
+            analysis_summary={
+                "emotion_scores": emotion_result['emotion_scores'],
+                "depression_severity": depression_result['severity'],
+                "privacy_mode": request.privacy_mode.value
+            }
+        )
+        
+    except Exception as e:
+        print(f"Text journal analysis error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 
 if __name__ == "__main__":
