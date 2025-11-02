@@ -416,30 +416,28 @@ export default function Progress() {
         {showVideoDialog && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-3xl overflow-hidden shadow-2xl max-w-5xl w-full max-h-[90vh]">
-              {/* Dialog Header */}
-              <div className="bg-[#1A3A37] p-8 text-white">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="bg-white/20 p-3 rounded-xl">
-                      <Video className="w-8 h-8" />
-                    </div>
-                    <div>
-                      <h3 className="text-2xl font-bold">
-                        Video Journal Recording
-                      </h3>
-                      <p className="text-gray-200 text-base">
-                        Express yourself freely and capture your thoughts
-                      </p>
-                    </div>
+              {/* Dialog Header - Minimalist */}
+              {/* <div className="bg-[#1A3A37] p-6 text-white flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="bg-white/20 p-3 rounded-xl">
+                    <Video className="w-8 h-8" />
                   </div>
-                  <button
-                    onClick={closeVideoDialog}
-                    className="bg-white/20 hover:bg-white/30 p-3 rounded-full transition-colors"
-                  >
-                    <X className="w-6 h-6" />
-                  </button>
+                  <div>
+                    <h3 className="text-2xl font-bold">
+                      Video Journal Recording
+                    </h3>
+                    <p className="text-gray-200 text-sm">
+                      Express yourself freely and capture your thoughts
+                    </p>
+                  </div>
                 </div>
-              </div>
+                <button
+                  onClick={closeVideoDialog}
+                  className="bg-white/20 hover:bg-white/30 p-3 rounded-full transition-colors shrink-0"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div> */}
 
               {/* Video Feed */}
               <div className="relative bg-gray-900">
@@ -450,86 +448,50 @@ export default function Progress() {
                   className="w-full h-[500px] object-cover"
                 />
 
-                {/* Recording Indicator */}
+                {/* Recording Indicator - Minimalist */}
                 {isRecording && (
-                  <div className="absolute top-6 left-6 bg-red-500 text-white px-6 py-3 rounded-full text-base font-bold flex items-center gap-3 shadow-lg">
-                    <div className="w-4 h-4 bg-white rounded-full animate-pulse"></div>
+                  <div className="absolute top-6 left-6 bg-red-500 text-white px-4 py-2 rounded-full text-base font-bold flex items-center gap-3 shadow-lg">
+                    <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
                     RECORDING
                   </div>
                 )}
 
-                {/* Audio Indicator */}
+                {/* Audio Indicator - Minimalist */}
                 {isRecording && (
-                  <div className="absolute top-6 right-6 bg-green-500 text-white px-6 py-3 rounded-full text-base font-bold flex items-center gap-3 shadow-lg">
+                  <div className="absolute top-6 right-6 bg-green-500 text-white px-4 py-2 rounded-full text-base font-bold flex items-center gap-2 shadow-lg">
                     <Mic className="w-5 h-5" />
                     AUDIO
                   </div>
                 )}
 
-                {/* Recording Timer */}
+                {/* Recording Status */}
                 {isRecording && (
-                  <div className="absolute bottom-6 left-6 bg-black/70 text-white px-4 py-2 rounded-full text-sm">
+                  <div className="absolute bottom-6 left-6 bg-black/60 text-white px-4 py-2 rounded-full text-sm font-medium">
                     Recording...
                   </div>
                 )}
               </div>
 
-              {/* Controls */}
-              <div className="p-8 bg-white border-t border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div className="text-base text-gray-600">
-                    {isRecording ? (
-                      <div className="flex items-center gap-3">
-                        <span className="text-red-600 font-bold text-lg">
-                          🔴 Recording in progress...
-                        </span>
-                        <span className="text-gray-500">
-                          Click "Stop & Save" when you're done
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-4 text-gray-600">
-                        <div className="flex items-center gap-2">
-                          <Video className="w-5 h-5 text-blue-600" />
-                          <span>HD Video</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Mic className="w-5 h-5 text-green-600" />
-                          <span>High Quality Audio</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Download className="w-5 h-5 text-purple-600" />
-                          <span>Auto Download</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex gap-4">
-                    {!isRecording ? (
-                      <button
-                        onClick={() => {
-                          if (mediaRecorder) {
-                            mediaRecorder.start();
-                            setIsRecording(true);
-                          }
-                        }}
-                        className="flex items-center gap-3 bg-red-500 text-white px-8 py-4 rounded-full text-lg font-bold hover:bg-red-600 transform hover:scale-105 transition-all duration-200 shadow-lg"
-                      >
-                        <Play className="w-6 h-6" />
-                        Start Recording
-                      </button>
-                    ) : (
-                      <button
-                        onClick={stopVideoRecording}
-                        className="flex items-center gap-3 bg-gray-700 text-white px-8 py-4 rounded-full text-lg font-bold hover:bg-gray-800 transform hover:scale-105 transition-all duration-200 shadow-lg"
-                      >
-                        <Square className="w-6 h-6" />
-                        Stop & Save
-                      </button>
-                    )}
-                  </div>
+              {/* Controls - Minimalist */}
+              <div className="p-3 bg-white flex items-center justify-between">
+                <div className="text-sm text-gray-600">
+                  {isRecording ? (
+                    <span className="font-semibold">
+                      🔴 Recording in progress... Click "Stop & Save" when
+                      you're done
+                    </span>
+                  ) : null}
                 </div>
+
+                {isRecording && (
+                  <button
+                    onClick={stopVideoRecording}
+                    className="flex items-center gap-2 bg-gray-800 text-white px-4 py-2 rounded-full text-base font-semibold hover:bg-gray-900 transition-colors shadow-lg"
+                  >
+                    <Square className="w-5 h-5" />
+                    Stop & Save
+                  </button>
+                )}
               </div>
             </div>
           </div>
