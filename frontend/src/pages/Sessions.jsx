@@ -1,5 +1,8 @@
-import React, { useState, useRef } from "react";
-import { Send, Paperclip, X, FileText, Image, File } from "lucide-react";
+import React, { useState, useRef, useEffect } from "react";
+import { Send, Paperclip, X, FileText, Image, File, Loader2 } from "lucide-react";
+import axios from "axios";
+
+const API_BASE_URL = "http://localhost:8000";
 
 export default function Sessions() {
   const [messages, setMessages] = useState([
@@ -12,52 +15,107 @@ export default function Sessions() {
   ]);
   const [inputValue, setInputValue] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [sessionId, setSessionId] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
 
-  const hardcodedResponses = [
-    "I understand how you're feeling. It's completely normal to have ups and downs.",
-    "Thank you for sharing that with me. Can you tell me more about what's been on your mind?",
-    "That sounds challenging. Remember, you're not alone in this journey.",
-    "It's great that you're taking time to reflect on your feelings. Self-awareness is an important step.",
-    "I appreciate you opening up. How has this been affecting your daily routine?",
-    "Your feelings are valid. Would you like to try a breathing exercise together?",
-    "I'm here to listen. Sometimes talking through our thoughts can help clarify them.",
-  ];
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-  const getRandomResponse = () => {
-    return hardcodedResponses[
-      Math.floor(Math.random() * hardcodedResponses.length)
-    ];
+  // Create a new chat session on component mount
+  useEffect(() => {
+    createNewSession();
+  }, []);
+
+  const createNewSession = async () => {
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/chat/new-session`);
+      if (response.data.success) {
+        setSessionId(response.data.session_id);
+        console.log("New session created:", response.data.session_id);
+      }
+    } catch (err) {
+      console.error("Error creating session:", err);
+      setError("Failed to create chat session. Please refresh the page.");
+    }
   };
 
-  const handleSendMessage = () => {
-    if (inputValue.trim() || uploadedFiles.length > 0) {
-      // Add user message
-      const userMessage = {
-        id: messages.length + 1,
-        type: "user",
-        content: inputValue,
-        files: uploadedFiles.length > 0 ? [...uploadedFiles] : null,
+  const sendMessageToAPI = async (message) => {
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/chat/message`, {
+        session_id: sessionId,
+        message: message,
+        temperature: 0.7,
+        max_tokens: 500,
+      });
+
+      if (response.data.success) {
+        return response.data.assistant_message;
+      } else {
+        throw new Error(response.data.error || "Failed to get response");
+      }
+    } catch (err) {
+      console.error("Error sending message:", err);
+      throw err;
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!inputValue.trim() && uploadedFiles.length === 0) return;
+
+    if (!sessionId) {
+      setError("No active session. Please refresh the page.");
+      return;
+    }
+
+    // Add user message
+    const userMessage = {
+      id: Date.now(),
+      type: "user",
+      content: inputValue,
+      files: uploadedFiles.length > 0 ? [...uploadedFiles] : null,
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInputValue("");
+    setUploadedFiles([]);
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Send message to API
+      const botResponse = await sendMessageToAPI(inputValue);
+
+      // Add bot response
+      const botMessage = {
+        id: Date.now() + 1,
+        type: "bot",
+        content: botResponse,
         timestamp: new Date(),
       };
 
-      setMessages((prev) => [...prev, userMessage]);
+      setMessages((prev) => [...prev, botMessage]);
+    } catch (err) {
+      console.log(err);
+      const errorMessage = {
+        id: Date.now() + 1,
+        type: "bot",
+        content:
+          "I apologize, but I'm having trouble connecting right now. Please try again in a moment. 🙏",
+        timestamp: new Date(),
+        isError: true,
+      };
 
-      // Simulate bot response after a delay
-      setTimeout(() => {
-        const botMessage = {
-          id: messages.length + 2,
-          type: "bot",
-          content: getRandomResponse(),
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, botMessage]);
-      }, 1000);
-
-      // Clear input and files
-      setInputValue("");
-      setUploadedFiles([]);
+      setMessages((prev) => [...prev, errorMessage]);
+      setError("Failed to send message. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -99,16 +157,56 @@ export default function Sessions() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
+  const clearChat = async () => {
+    if (!sessionId) return;
+
+    try {
+      await axios.delete(`${API_BASE_URL}/api/chat/clear/${sessionId}`);
+      setMessages([
+        {
+          id: 1,
+          type: "bot",
+          content: "Chat history cleared. How can I help you today?",
+          timestamp: new Date(),
+        },
+      ]);
+    } catch (err) {
+      console.error("Error clearing chat:", err);
+      setError("Failed to clear chat history.");
+    }
+  };
+
   return (
     <div className="h-full flex flex-col bg-white">
       {/* Header */}
       <div className="border-b border-gray-200 p-6">
-        <h1 className="text-2xl font-bold text-[#1A3A37]">
-          Chat With Maitri - Your Digital Companion
-        </h1>
-        <p className="text-gray-600 text-sm mt-1">
-          Share your thoughts and feelings in a safe space
-        </p>
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-2xl font-bold text-[#1A3A37]">
+              Chat With Maitri - Your Digital Companion
+            </h1>
+            <p className="text-gray-600 text-sm mt-1">
+              Share your thoughts and feelings in a safe space
+            </p>
+            {sessionId && (
+              <p className="text-xs text-gray-400 mt-1">
+                Session ID: {sessionId.slice(0, 8)}...
+              </p>
+            )}
+          </div>
+          <button
+            onClick={clearChat}
+            className="px-4 py-2 text-sm text-gray-600 hover:text-[#1A3A37] hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            Clear Chat
+          </button>
+        </div>
+
+        {error && (
+          <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
       </div>
 
       {/* Chat Messages */}
@@ -124,11 +222,15 @@ export default function Sessions() {
               className={`max-w-[70%] rounded-2xl px-4 py-3 ${
                 message.type === "user"
                   ? "bg-[#1A3A37] text-white"
+                  : message.isError
+                  ? "bg-red-50 text-red-800 border border-red-200"
                   : "bg-gray-100 text-gray-800"
               }`}
             >
               {message.content && (
-                <p className="text-sm leading-relaxed">{message.content}</p>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                  {message.content}
+                </p>
               )}
 
               {/* Display uploaded files */}
@@ -181,6 +283,8 @@ export default function Sessions() {
                 className={`text-xs mt-2 ${
                   message.type === "user"
                     ? "text-white text-opacity-70"
+                    : message.isError
+                    ? "text-red-600"
                     : "text-gray-500"
                 }`}
               >
@@ -192,6 +296,19 @@ export default function Sessions() {
             </div>
           </div>
         ))}
+
+        {/* Loading indicator */}
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="bg-gray-100 rounded-2xl px-4 py-3">
+              <div className="flex items-center space-x-2">
+                <Loader2 className="w-4 h-4 animate-spin text-gray-600" />
+                <p className="text-sm text-gray-600">Maitri is thinking...</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -242,7 +359,8 @@ export default function Sessions() {
 
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex-shrink-0 p-3 text-gray-500 hover:text-[#1A3A37] hover:bg-gray-100 rounded-full transition-colors"
+            disabled={isLoading}
+            className="flex-shrink-0 p-3 text-gray-500 hover:text-[#1A3A37] hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Paperclip className="w-5 h-5" />
           </button>
@@ -252,8 +370,9 @@ export default function Sessions() {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
+              disabled={isLoading}
               placeholder="Type your message here..."
-              className="w-full px-4 py-3 border border-gray-300 rounded-2xl resize-none focus:outline-none focus:border-[#1A3A37] focus:ring-1 focus:ring-[#1A3A37] text-sm"
+              className="w-full px-4 py-3 border border-gray-300 rounded-2xl resize-none focus:outline-none focus:border-[#1A3A37] focus:ring-1 focus:ring-[#1A3A37] text-sm disabled:bg-gray-50 disabled:cursor-not-allowed"
               rows="1"
               style={{
                 minHeight: "48px",
@@ -265,10 +384,16 @@ export default function Sessions() {
 
           <button
             onClick={handleSendMessage}
-            disabled={!inputValue.trim() && uploadedFiles.length === 0}
+            disabled={
+              (!inputValue.trim() && uploadedFiles.length === 0) || isLoading
+            }
             className="flex-shrink-0 p-3 bg-[#1A3A37] text-white rounded-full hover:bg-[#154F4A] disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
           >
-            <Send className="w-5 h-5" />
+            {isLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <Send className="w-5 h-5" />
+            )}
           </button>
         </div>
 
