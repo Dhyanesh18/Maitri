@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { toast } from "react-toastify";
 import {
   Edit3,
   Video,
@@ -12,6 +13,8 @@ import {
   X,
   Download,
   Mic,
+  Upload,
+  Trash2,
 } from "lucide-react";
 
 export default function Progress() {
@@ -26,6 +29,7 @@ export default function Progress() {
   const [pendingStream, setPendingStream] = useState(null);
   const videoRef = useRef(null);
   const previewRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const startVideoRecording = async () => {
     try {
@@ -67,11 +71,13 @@ export default function Progress() {
         const videoUrl = URL.createObjectURL(blob);
         setRecordedVideoUrl(videoUrl);
 
-        const link = document.createElement("a");
-        link.href = videoUrl;
-        link.download = `journal-${
+        const fileName = `journal-${
           new Date().toISOString().split("T")[0]
         }-${Date.now()}.webm`;
+
+        const link = document.createElement("a");
+        link.href = videoUrl;
+        link.download = fileName;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -82,9 +88,19 @@ export default function Progress() {
             id: Date.now(),
             url: videoUrl,
             timestamp: new Date(),
-            name: link.download,
+            name: fileName,
+            size: blob.size,
           },
         ]);
+
+        // Show success toast
+        toast.success("Video journal recorded and downloaded successfully!", {
+          position: "top-right",
+          autoClose: 3000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+        });
 
         pendingStream.getTracks().forEach((t) => t.stop());
         if (videoRef.current) videoRef.current.srcObject = null;
@@ -117,11 +133,73 @@ export default function Progress() {
     if (journalText.trim()) {
       // In a real app, this would save to a database
       console.log("Saving journal entry:", journalText);
-      alert("Journal entry saved!");
+
+      // Show success toast
+      toast.success("Journal entry saved successfully!", {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+      });
+
       setJournalText("");
       setJournalStreak(journalStreak + 1);
       setLastJournalDate("Today");
     }
+  };
+
+  const handleVideoUpload = (e) => {
+    const files = Array.from(e.target.files);
+
+    files.forEach((file) => {
+      if (file.type.startsWith("video/")) {
+        const videoUrl = URL.createObjectURL(file);
+        const newVideo = {
+          id: Date.now() + Math.random(),
+          url: videoUrl,
+          timestamp: new Date(),
+          name: file.name,
+          size: file.size,
+        };
+
+        setSavedVideos((prev) => [...prev, newVideo]);
+      }
+    });
+
+    if (files.length > 0) {
+      // Show success toast
+      toast.success(`${files.length} video(s) uploaded successfully!`, {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+      });
+    }
+
+    // Reset file input
+    e.target.value = "";
+  };
+
+  const deleteVideo = (videoId) => {
+    setSavedVideos((prev) => prev.filter((v) => v.id !== videoId));
+
+    toast.info("Video removed from list", {
+      position: "top-right",
+      autoClose: 2000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+    });
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
   return (
@@ -262,13 +340,30 @@ export default function Progress() {
                 HD Video Recording • High Quality Audio • Auto Download
               </div>
 
-              <button
-                onClick={startVideoRecording}
-                className="flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded-full font-medium hover:bg-red-600 transition-colors"
-              >
-                <Play className="w-4 h-4" />
-                Start Recording
-              </button>
+              <div className="flex gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="video/*"
+                  onChange={handleVideoUpload}
+                  className="hidden"
+                  multiple
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded-full font-medium hover:bg-blue-600 transition-colors"
+                >
+                  <Upload className="w-4 h-4" />
+                  Upload Video
+                </button>
+                <button
+                  onClick={startVideoRecording}
+                  className="flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded-full font-medium hover:bg-red-600 transition-colors"
+                >
+                  <Play className="w-4 h-4" />
+                  Start Recording
+                </button>
+              </div>
             </div>
 
             {/* Recent Videos */}
@@ -279,19 +374,35 @@ export default function Progress() {
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {savedVideos.slice(-6).map((video) => (
-                    <div key={video.id} className="bg-gray-50 rounded-lg p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="bg-blue-50 p-2 rounded-lg">
+                    <div
+                      key={video.id}
+                      className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="bg-blue-50 p-2 rounded-lg shrink-0">
                           <VideoIcon className="w-4 h-4 text-blue-600" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-700 truncate">
-                            {video.timestamp.toLocaleDateString()}
+                            {video.name}
                           </p>
                           <p className="text-xs text-gray-500">
+                            {video.timestamp.toLocaleDateString()}{" "}
                             {video.timestamp.toLocaleTimeString()}
                           </p>
+                          {video.size && (
+                            <p className="text-xs text-gray-400 mt-1">
+                              {formatFileSize(video.size)}
+                            </p>
+                          )}
                         </div>
+                        <button
+                          onClick={() => deleteVideo(video.id)}
+                          className="text-gray-400 hover:text-red-500 transition-colors shrink-0"
+                          title="Remove video"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
                   ))}
