@@ -110,10 +110,10 @@ export default function ChatBot() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
+    <div className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-50 p-4">
       <div className="max-w-4xl mx-auto h-[calc(100vh-2rem)] flex flex-col bg-white rounded-2xl shadow-xl overflow-hidden">
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#61BDD3] to-[#4a9db8] p-6 text-white">
+        <div className="bg-linear-to-r from-[#61BDD3] to-[#4a9db8] p-6 text-white">
           <div className="flex items-center gap-3">
             <MessageCircle className="w-8 h-8" />
             <div>

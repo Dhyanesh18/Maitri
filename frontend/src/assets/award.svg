@@ -28,13 +28,13 @@
 <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_9_9"/>
 <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_9_9" result="shape"/>
 </filter>
-<linearGradient id="paint0_linear_9_9" x1="121.125" y1="0" x2="121.125" y2="132.627" gradientUnits="userSpaceOnUse">
+<linearlinear id="paint0_linear_9_9" x1="121.125" y1="0" x2="121.125" y2="132.627" linearUnits="userSpaceOnUse">
 <stop stop-color="#FFE175"/>
 <stop offset="1" stop-color="#FFD12E"/>
-</linearGradient>
-<linearGradient id="paint1_linear_9_9" x1="121.623" y1="37.7038" x2="121.623" y2="89.7666" gradientUnits="userSpaceOnUse">
+</linearlinear>
+<linearlinear id="paint1_linear_9_9" x1="121.623" y1="37.7038" x2="121.623" y2="89.7666" linearUnits="userSpaceOnUse">
 <stop stop-color="white"/>
 <stop offset="1" stop-color="#FFE86D"/>
-</linearGradient>
+</linearlinear>
 </defs>
 </svg>

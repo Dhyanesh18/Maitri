@@ -13,8 +13,14 @@ import {
   Lock,
   Key,
   Trash,
+  Award,
+  Trophy,
+  Star,
 } from "lucide-react";
-
+import awardSvg from "../assets/award.svg";
+import trophySvg from "../assets/TropyStar.svg";
+import award2Svg from "../assets/Award2.svg";
+;
 export default function Profile() {
   const { user, token, getAuthHeaders } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
@@ -255,6 +261,66 @@ export default function Profile() {
                 </div>
               )}
             </form>
+          </div>
+        </div>
+
+        {/* Achievements Card */}
+        <div className="bg-white rounded-xl shadow-lg p-8 mt-6">
+          <div className="flex items-center justify-between mb-6">
+            <h4 className="text-lg font-semibold text-gray-900 flex items-center">
+              <Trophy className="w-5 h-5 mr-2 text-teal-600" />
+              Achievements
+            </h4>
+            <span className="text-sm text-gray-500">
+              Your wellness journey milestones
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {/* Achievement 1 */}
+            <div className="flex flex-col items-center text-center p-4 rounded-lg bg-gradient-to-br from-teal-50 to-blue-50 hover:shadow-md transition-shadow">
+              <img 
+                src={award2Svg} 
+                alt="Award" 
+                className="w-16 h-16 mb-3"
+              />
+              <h5 className="font-semibold text-gray-800 text-sm mb-1">
+                First Journal
+              </h5>
+              <p className="text-xs text-gray-600">
+                Started your journey
+              </p>
+            </div>
+
+            {/* Achievement 2 */}
+            <div className="flex flex-col items-center text-center p-4 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 hover:shadow-md transition-shadow">
+              <img 
+                src={awardSvg} 
+                alt="Award" 
+                className="w-16 h-16 mb-3"
+              />
+              <h5 className="font-semibold text-gray-800 text-sm mb-1">
+                3-Day Streak
+              </h5>
+              <p className="text-xs text-gray-600">
+                Consistency champion
+              </p>
+            </div>
+
+            {/* Achievement 3 */}
+            <div className="flex flex-col items-center text-center p-4 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 hover:shadow-md transition-shadow">
+              <img 
+                src={trophySvg} 
+                alt="Award" 
+                className="w-16 h-16 mb-3"
+              />
+              <h5 className="font-semibold text-gray-800 text-sm mb-1">
+                5 Journals
+              </h5>
+              <p className="text-xs text-gray-600">
+                Dedicated writer
+              </p>
+            </div>
           </div>
         </div>
 

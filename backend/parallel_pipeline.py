@@ -15,7 +15,7 @@ from enum import Enum
 from pathlib import Path
 import re
 from multiprocessing import Process, Queue
-
+# from faster_whisper import WhisperModel
 import torch
 import torchaudio
 import spacy
@@ -148,7 +148,17 @@ class AudioEmotionAnalyzer:
             "all_emotions": {emotions[i]: float(probs[i]) for i in range(len(emotions))}
         }
 
+    model_size = "base.en"
 
+# Load with GPU acceleration
+# model = WhisperModel(model_size, device="cuda", compute_type="float16")
+
+# t0 = time.time()
+# segments, info = model.transcribe("your_audio.wav", beam_size=5, vad_filter=True)
+# print(f"→ {info.duration:.1f}s audio in {time.time() - t0:.1f}s")
+
+# for seg in segments:
+#     print(f"[{seg.start:.2f}–{seg.end:.2f}] {seg.text}")
 
 # TEXT ANALYSIS
 class TextAnalyzer:

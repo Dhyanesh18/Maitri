@@ -151,21 +151,25 @@ export default function DashboardHome() {
       title: "Managing Daily Stress",
       desc: "Simple techniques to reduce stress and find balance.",
       readTime: "5 min read",
+      url: "https://www.mayoclinic.org/healthy-lifestyle/stress-management/in-depth/stress-relievers/art-20047257",
     },
     {
       title: "Building Resilience",
       desc: "Strengthen your ability to bounce back from challenges.",
       readTime: "6 min read",
+      url: "https://www.apa.org/topics/resilience/building-your-resilience",
     },
     {
       title: "Mindful Breathing",
       desc: "Learn breathing exercises to calm your mind.",
       readTime: "4 min read",
+      url: "https://ggia.berkeley.edu/practice/mindful_breathing",
     },
     {
       title: "Sleep & Wellness",
       desc: "Improve your sleep quality for better mental health.",
       readTime: "7 min read",
+      url: "https://www.mayoclinic.org/healthy-lifestyle/adult-health/in-depth/sleep/art-20048379",
     },
   ];
 
@@ -354,7 +358,7 @@ export default function DashboardHome() {
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
         <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden">
           {/* Header */}
-          <div className="bg-gradient-to-r from-[#61BDD3] to-[#4a9db8] p-6 text-white relative">
+          <div className="bg-linear-to-r from-[#61BDD3] to-[#4a9db8] p-6 text-white relative">
             <button
               onClick={() => setShowQuiz(false)}
               className="absolute top-4 right-4 text-white hover:bg-white/20 p-2 rounded-lg transition-colors"
@@ -492,7 +496,7 @@ export default function DashboardHome() {
 
   if (quizCompleted && quizResults) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-teal-50 to-blue-50 p-6">
+      <div className="min-h-screen bg-linear-to-br from-teal-50 to-blue-50 p-6">
         <div className="max-w-4xl mx-auto">
           {/* Results Header */}
           <div className="bg-white rounded-2xl shadow-lg p-8 mb-6">
@@ -813,6 +817,7 @@ export default function DashboardHome() {
             {articles.map((a, i) => (
               <article
                 key={i}
+                onClick={() => window.open(a.url, '_blank', 'noopener,noreferrer')}
                 className="bg-white rounded-2xl shadow-sm hover:shadow-md p-6 transition cursor-pointer"
               >
                 <div className="text-4xl mb-3">{a.icon}</div>

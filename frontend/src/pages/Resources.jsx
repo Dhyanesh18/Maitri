@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   LineChart,
   Line,
@@ -23,14 +24,23 @@ import {
   Activity,
   Lightbulb,
   Loader2,
+  X,
+  AlertTriangle,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
 export default function Resources() {
   const { getAuthHeaders } = useAuth();
+  const navigate = useNavigate();
   const [progressData, setProgressData] = useState([]);
   const [journals, setJournals] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showAlertDialog, setShowAlertDialog] = useState(false);
+  const [alertMessage, setAlertMessage] = useState({
+    title: "",
+    description: "",
+    highParameters: [],
+  });
   const [stats, setStats] = useState({
     depressionImprovement: 0,
     stressImprovement: 0,
@@ -41,6 +51,7 @@ export default function Resources() {
 
   useEffect(() => {
     fetchJournalData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchJournalData = async () => {
@@ -69,12 +80,107 @@ export default function Resources() {
     }
   };
 
+  const checkHighScores = (journalEntries) => {
+    // Check if user has dismissed the alert
+    const dismissed = localStorage.getItem("mentalHealthAlertDismissed");
+    if (dismissed === "true") {
+      return;
+    }
+
+    if (!journalEntries || journalEntries.length < 2) {
+      return;
+    }
+
+    // Group journals by date and sort
+    const journalsByDate = {};
+    journalEntries.forEach((journal) => {
+      const date = journal.date;
+      if (!journalsByDate[date]) {
+        journalsByDate[date] = [];
+      }
+      journalsByDate[date].push(journal);
+    });
+
+    // Get last 2 days of data
+    const sortedDates = Object.keys(journalsByDate).sort();
+    if (sortedDates.length < 2) {
+      return;
+    }
+
+    const lastTwoDates = sortedDates.slice(-2);
+    
+    // Calculate average scores for each day
+    const dailyScores = lastTwoDates.map(date => {
+      const dayJournals = journalsByDate[date];
+      const avgDepression = dayJournals.reduce(
+        (sum, j) => sum + (j.llm_assessment?.depression_score || j.depression_score || 0),
+        0
+      ) / dayJournals.length;
+      const avgStress = dayJournals.reduce(
+        (sum, j) => sum + (j.llm_assessment?.stress_score || j.stress_score || 0),
+        0
+      ) / dayJournals.length;
+      const avgAnxiety = dayJournals.reduce(
+        (sum, j) => sum + (j.llm_assessment?.anxiety_score || j.anxiety_score || 0),
+        0
+      ) / dayJournals.length;
+
+      return {
+        depression: avgDepression,
+        stress: avgStress,
+        anxiety: avgAnxiety,
+      };
+    });
+
+    // Check if scores meet alert criteria for both days
+    const highParameters = [];
+    let allThreeHigh = true;
+
+    // Check if any parameter is above 80% for both days
+    if (dailyScores[0].depression > 80 && dailyScores[1].depression > 80) {
+      highParameters.push("Depression");
+    }
+    if (dailyScores[0].stress > 80 && dailyScores[1].stress > 80) {
+      highParameters.push("Stress");
+    }
+    if (dailyScores[0].anxiety > 80 && dailyScores[1].anxiety > 80) {
+      highParameters.push("Anxiety");
+    }
+
+    // Check if all three are above 50% for both days
+    const day1AllHigh = dailyScores[0].depression > 50 && dailyScores[0].stress > 50 && dailyScores[0].anxiety > 50;
+    const day2AllHigh = dailyScores[1].depression > 50 && dailyScores[1].stress > 50 && dailyScores[1].anxiety > 50;
+    
+    allThreeHigh = day1AllHigh && day2AllHigh;
+
+    // Show alert if criteria met
+    if (highParameters.length > 0 || allThreeHigh) {
+      if (highParameters.length > 0) {
+        setAlertMessage({
+          title: "We're Concerned About You",
+          description: `Your ${highParameters.join(", ")} levels have been elevated for the past 2 days. Taking time for self-care can make a real difference.`,
+          highParameters: highParameters,
+        });
+      } else if (allThreeHigh) {
+        setAlertMessage({
+          title: "Your Mental Health Needs Attention",
+          description: "Your overall mental health scores have been concerning for the past 2 days. It's important to take care of yourself.",
+          highParameters: ["Depression", "Stress", "Anxiety"],
+        });
+      }
+      setShowAlertDialog(true);
+    }
+  };
+
   const processJournalData = (journalEntries) => {
     if (!journalEntries || journalEntries.length === 0) {
       // Use dummy data if no journals
       setProgressData(generateDummyData());
       return;
     }
+
+    // Check for high scores before processing
+    checkHighScores(journalEntries);
 
     // Group journals by date
     const journalsByDate = {};
@@ -738,6 +844,97 @@ export default function Resources() {
           </div>
         </div>
       </div>
+
+      {/* Mental Health Alert Dialog */}
+      {showAlertDialog && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full">
+            {/* Header */}
+            <div className="bg-rose-500 p-6 text-white flex items-center justify-between rounded-t-3xl">
+              <div className="flex items-center gap-3">
+                <div className="bg-white/20 p-3 rounded-full">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold">{alertMessage.title}</h3>
+                  <p className="text-rose-100 text-sm">Let's prioritize your wellbeing</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-8">
+              <p className="text-gray-700 text-base mb-6 leading-relaxed">
+                {alertMessage.description}
+              </p>
+
+              {/* High Parameters Display */}
+              {alertMessage.highParameters.length > 0 && (
+                <div className="bg-rose-50 rounded-xl p-4 mb-6">
+                  <p className="text-sm font-semibold text-rose-800 mb-2">
+                    Elevated Metrics:
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {alertMessage.highParameters.map((param, idx) => (
+                      <span
+                        key={idx}
+                        className="bg-rose-100 text-rose-700 px-3 py-1 rounded-full text-sm font-medium"
+                      >
+                        {param}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Recommendation */}
+              <div className="bg-teal-50 rounded-xl p-4 mb-6">
+                <div className="flex items-start gap-3">
+                  <div className="bg-teal-100 p-2 rounded-lg shrink-0">
+                    <Heart className="w-5 h-5 text-teal-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-teal-900 mb-1">
+                      Recommended Action
+                    </h4>
+                    <p className="text-sm text-teal-800">
+                      Try guided meditation or breathing exercises to help manage your stress and emotions.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={() => {
+                    setShowAlertDialog(false);
+                    navigate("/calming");
+                  }}
+                  className="flex-1 bg-teal-600 text-white px-6 py-3 rounded-full font-semibold hover:bg-teal-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Heart className="w-5 h-5" />
+                  Try Meditation
+                </button>
+                <button
+                  onClick={() => {
+                    localStorage.setItem("mentalHealthAlertDismissed", "true");
+                    setShowAlertDialog(false);
+                  }}
+                  className="flex-1 border-2 border-gray-300 text-gray-700 px-6 py-3 rounded-full font-semibold hover:bg-gray-50 transition-colors"
+                >
+                  Not Now
+                </button>
+              </div>
+
+              {/* Dismissal Note */}
+              <p className="text-xs text-gray-500 text-center mt-4">
+                Clicking "Not Now" will hide this alert permanently
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
