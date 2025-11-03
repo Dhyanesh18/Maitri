@@ -1,20 +1,54 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import { toast } from "react-toastify";
 
 export default function LoginModal({ isOpen, onClose }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const { login, register } = useAuth();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsLoading(true);
 
-    // Simple dummy validation
-    if (email && password) {
-      // Simulate successful login
-      onClose();
-      navigate("/dashboard");
+    try {
+      // Validate password length
+      if (password.length > 72) {
+        toast.error("Password must be 72 characters or less");
+        setIsLoading(false);
+        return;
+      }
+      
+      if (isSignUp && password.length < 8) {
+        toast.error("Password must be at least 8 characters");
+        setIsLoading(false);
+        return;
+      }
+
+      let result;
+      if (isSignUp) {
+        result = await register(email, password, fullName);
+      } else {
+        result = await login(email, password);
+      }
+
+      if (result.success) {
+        toast.success(isSignUp ? "Account created successfully!" : "Welcome back!");
+        onClose();
+        navigate("/dashboard");
+      } else {
+        toast.error(result.error || "Authentication failed. Please try again.");
+      }
+    } catch (error) {
+      console.error("Authentication error:", error);
+      toast.error(error.message || "Authentication failed. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -75,8 +109,11 @@ export default function LoginModal({ isOpen, onClose }) {
                   <input
                     type="text"
                     id="name"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                     placeholder="Enter your full name"
+                    required={isSignUp}
                   />
                 </div>
               )}
@@ -113,8 +150,15 @@ export default function LoginModal({ isOpen, onClose }) {
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   placeholder="Enter your password"
+                  minLength={isSignUp ? 8 : undefined}
+                  maxLength={72}
                   required
                 />
+                {isSignUp && (
+                  <p className="mt-1 text-sm text-gray-500">
+                    Password must be 8-72 characters
+                  </p>
+                )}
               </div>
 
               {!isSignUp && (
@@ -146,9 +190,10 @@ export default function LoginModal({ isOpen, onClose }) {
 
               <button
                 type="submit"
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors"
+                disabled={isLoading}
+                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSignUp ? "Create Account" : "Sign In"}
+                {isLoading ? "Processing..." : (isSignUp ? "Create Account" : "Sign In")}
               </button>
             </form>
 

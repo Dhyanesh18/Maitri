@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   LineChart,
   Line,
@@ -22,44 +22,287 @@ import {
   User,
   Activity,
   Lightbulb,
+  Loader2,
 } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Resources() {
-  // Sample data for 15 days of progress
-  const progressData = [
-    { day: "Day 1", depression: 7, stress: 8, anxiety: 9 },
-    { day: "Day 2", depression: 6, stress: 7, anxiety: 8 },
-    { day: "Day 3", depression: 6, stress: 6, anxiety: 7 },
-    { day: "Day 4", depression: 5, stress: 6, anxiety: 6 },
-    { day: "Day 5", depression: 5, stress: 5, anxiety: 6 },
-    { day: "Day 6", depression: 4, stress: 5, anxiety: 5 },
-    { day: "Day 7", depression: 4, stress: 4, anxiety: 5 },
-    { day: "Day 8", depression: 3, stress: 4, anxiety: 4 },
-    { day: "Day 9", depression: 3, stress: 3, anxiety: 4 },
-    { day: "Day 10", depression: 2, stress: 3, anxiety: 3 },
-    { day: "Day 11", depression: 2, stress: 2, anxiety: 3 },
-    { day: "Day 12", depression: 2, stress: 2, anxiety: 2 },
-    { day: "Day 13", depression: 1, stress: 2, anxiety: 2 },
-    { day: "Day 14", depression: 1, stress: 1, anxiety: 1 },
-    { day: "Day 15", depression: 1, stress: 1, anxiety: 1 },
-  ];
+  const { getAuthHeaders } = useAuth();
+  const [progressData, setProgressData] = useState([]);
+  const [journals, setJournals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    depressionImprovement: 0,
+    stressImprovement: 0,
+    anxietyImprovement: 0,
+    bestTime: "Morning",
+    weekendImprovement: 0,
+  });
 
-  // Calculate improvement percentages
-  const depressionImprovement = Math.round(
-    ((progressData[0].depression - progressData[14].depression) /
-      progressData[0].depression) *
-      100
-  );
-  const stressImprovement = Math.round(
-    ((progressData[0].stress - progressData[14].stress) /
-      progressData[0].stress) *
-      100
-  );
-  const anxietyImprovement = Math.round(
-    ((progressData[0].anxiety - progressData[14].anxiety) /
-      progressData[0].anxiety) *
-      100
-  );
+  useEffect(() => {
+    fetchJournalData();
+  }, []);
+
+  const fetchJournalData = async () => {
+    try {
+      setLoading(true);
+
+      // Fetch user's journal entries (last 50)
+      const response = await fetch(
+        "http://localhost:8000/api/journals/my-journals?limit=50",
+        {
+          headers: {
+            ...getAuthHeaders(),
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setJournals(data.journals);
+        processJournalData(data.journals);
+      }
+    } catch (error) {
+      console.error("Failed to fetch journal data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const processJournalData = (journalEntries) => {
+    if (!journalEntries || journalEntries.length === 0) {
+      // Use dummy data if no journals
+      setProgressData(generateDummyData());
+      return;
+    }
+
+    // Group journals by date
+    const journalsByDate = {};
+    journalEntries.forEach((journal) => {
+      const date = journal.date;
+      if (!journalsByDate[date]) {
+        journalsByDate[date] = [];
+      }
+      journalsByDate[date].push(journal);
+    });
+
+    // Calculate daily averages (last 15 days)
+    const dates = Object.keys(journalsByDate).sort().slice(-15);
+    const chartData = dates.map((date, index) => {
+      const dayJournals = journalsByDate[date];
+      const avgDepression =
+        dayJournals.reduce(
+          (sum, j) =>
+            sum +
+            (j.llm_assessment?.depression_score || j.depression_score || 0),
+          0
+        ) / dayJournals.length;
+      const avgStress =
+        dayJournals.reduce(
+          (sum, j) => sum + (j.llm_assessment?.stress_score || j.stress_score || 0),
+          0
+        ) / dayJournals.length;
+      const avgAnxiety =
+        dayJournals.reduce(
+          (sum, j) =>
+            sum + (j.llm_assessment?.anxiety_score || j.anxiety_score || 0),
+          0
+        ) / dayJournals.length;
+
+      // Convert 0-100 scores to 1-10 scale (inverted: 100 = 1, 0 = 10)
+      return {
+        day: `Day ${index + 1}`,
+        date: new Date(date).toLocaleDateString(),
+        depression: Math.round(10 - (avgDepression / 100) * 9),
+        stress: Math.round(10 - (avgStress / 100) * 9),
+        anxiety: Math.round(10 - (avgAnxiety / 100) * 9),
+      };
+    });
+
+    setProgressData(chartData);
+
+    // Calculate improvements
+    if (chartData.length >= 2) {
+      const first = chartData[0];
+      const last = chartData[chartData.length - 1];
+
+      const depressionImprovement = Math.round(
+        ((first.depression - last.depression) / first.depression) * 100
+      );
+      const stressImprovement = Math.round(
+        ((first.stress - last.stress) / first.stress) * 100
+      );
+      const anxietyImprovement = Math.round(
+        ((first.anxiety - last.anxiety) / first.anxiety) * 100
+      );
+
+      // Analyze time patterns
+      const hourlyStats = analyzeHourlyPatterns(journalEntries);
+      const weekendStats = analyzeWeekendPattern(journalEntries);
+
+      setStats({
+        depressionImprovement: Math.max(0, depressionImprovement),
+        stressImprovement: Math.max(0, stressImprovement),
+        anxietyImprovement: Math.max(0, anxietyImprovement),
+        bestTime: hourlyStats.bestTime,
+        weekendImprovement: weekendStats,
+      });
+    }
+  };
+
+  const analyzeHourlyPatterns = (journals) => {
+    const hourlyScores = {};
+
+    journals.forEach((journal) => {
+      const hour = new Date(journal.timestamp).getHours();
+      const mentalHealthScore =
+        journal.llm_assessment?.mental_health_score ||
+        journal.mental_health_score ||
+        50;
+
+      if (!hourlyScores[hour]) {
+        hourlyScores[hour] = { total: 0, count: 0 };
+      }
+      hourlyScores[hour].total += mentalHealthScore;
+      hourlyScores[hour].count += 1;
+    });
+
+    // Find best performing time
+    let bestHour = 0;
+    let bestScore = 0;
+
+    Object.keys(hourlyScores).forEach((hour) => {
+      const avg = hourlyScores[hour].total / hourlyScores[hour].count;
+      if (avg > bestScore) {
+        bestScore = avg;
+        bestHour = parseInt(hour);
+      }
+    });
+
+    // Convert hour to time period
+    if (bestHour >= 6 && bestHour < 12) return "Morning (6 AM - 12 PM)";
+    if (bestHour >= 12 && bestHour < 17) return "Afternoon (12 PM - 5 PM)";
+    if (bestHour >= 17 && bestHour < 21) return "Evening (5 PM - 9 PM)";
+    return "Night (9 PM - 6 AM)";
+  };
+
+  const analyzeWeekendPattern = (journals) => {
+    const weekdayScores = [];
+    const weekendScores = [];
+
+    journals.forEach((journal) => {
+      const date = new Date(journal.timestamp);
+      const day = date.getDay();
+      const score =
+        journal.llm_assessment?.mental_health_score ||
+        journal.mental_health_score ||
+        50;
+
+      if (day === 0 || day === 6) {
+        weekendScores.push(score);
+      } else {
+        weekdayScores.push(score);
+      }
+    });
+
+    if (weekendScores.length === 0 || weekdayScores.length === 0) return 0;
+
+    const weekdayAvg =
+      weekdayScores.reduce((a, b) => a + b, 0) / weekdayScores.length;
+    const weekendAvg =
+      weekendScores.reduce((a, b) => a + b, 0) / weekendScores.length;
+
+    return Math.round(((weekendAvg - weekdayAvg) / weekdayAvg) * 100);
+  };
+
+  const generateDummyData = () => {
+    return [
+      { day: "Day 1", depression: 7, stress: 8, anxiety: 9 },
+      { day: "Day 2", depression: 6, stress: 7, anxiety: 8 },
+      { day: "Day 3", depression: 6, stress: 6, anxiety: 7 },
+      { day: "Day 4", depression: 5, stress: 6, anxiety: 6 },
+      { day: "Day 5", depression: 5, stress: 5, anxiety: 6 },
+      { day: "Day 6", depression: 4, stress: 5, anxiety: 5 },
+      { day: "Day 7", depression: 4, stress: 4, anxiety: 5 },
+      { day: "Day 8", depression: 3, stress: 4, anxiety: 4 },
+      { day: "Day 9", depression: 3, stress: 3, anxiety: 4 },
+      { day: "Day 10", depression: 2, stress: 3, anxiety: 3 },
+      { day: "Day 11", depression: 2, stress: 2, anxiety: 3 },
+      { day: "Day 12", depression: 2, stress: 2, anxiety: 2 },
+      { day: "Day 13", depression: 1, stress: 2, anxiety: 2 },
+      { day: "Day 14", depression: 1, stress: 1, anxiety: 1 },
+      { day: "Day 15", depression: 1, stress: 1, anxiety: 1 },
+    ];
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white p-6 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-teal-600 animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Loading your progress data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Use dummy data for improvements if no real data
+  const depressionImprovement =
+    stats.depressionImprovement ||
+    (progressData.length > 0
+      ? Math.round(
+          ((progressData[0].depression -
+            progressData[progressData.length - 1].depression) /
+            progressData[0].depression) *
+            100
+        )
+      : 86);
+
+  const stressImprovement =
+    stats.stressImprovement ||
+    (progressData.length > 0
+      ? Math.round(
+          ((progressData[0].stress -
+            progressData[progressData.length - 1].stress) /
+            progressData[0].stress) *
+            100
+        )
+      : 88);
+
+  const anxietyImprovement =
+    stats.anxietyImprovement ||
+    (progressData.length > 0
+      ? Math.round(
+          ((progressData[0].anxiety -
+            progressData[progressData.length - 1].anxiety) /
+            progressData[0].anxiety) *
+            100
+        )
+      : 89);
+
+  // Helper function to get feedback based on improvement percentage
+  const getImprovementFeedback = (improvement) => {
+    if (improvement >= 50) {
+      return { message: "Exceptional progress!", icon: TrendingDown, color: "text-green-600" };
+    } else if (improvement >= 30) {
+      return { message: "Great improvement!", icon: TrendingDown, color: "text-green-500" };
+    } else if (improvement >= 15) {
+      return { message: "Good progress!", icon: TrendingDown, color: "text-blue-500" };
+    } else if (improvement >= 5) {
+      return { message: "Keep going!", icon: TrendingDown, color: "text-blue-400" };
+    } else if (improvement >= -5) {
+      return { message: "Steady state", icon: TrendingUp, color: "text-gray-500" };
+    } else if (improvement >= -15) {
+      return { message: "Needs attention", icon: TrendingUp, color: "text-orange-500" };
+    } else {
+      return { message: "Consider support", icon: TrendingUp, color: "text-red-500" };
+    }
+  };
+
+  // Get feedback for each metric
+  const depressionFeedback = getImprovementFeedback(depressionImprovement);
+  const stressFeedback = getImprovementFeedback(stressImprovement);
+  const anxietyFeedback = getImprovementFeedback(anxietyImprovement);
 
   return (
     <div className="min-h-screen bg-white p-6">
@@ -72,6 +315,12 @@ export default function Resources() {
           <p className="text-gray-600">
             Track your mental wellness journey and discover personalized
             recommendations
+            {journals.length > 0 && (
+              <span className="text-teal-600 font-medium">
+                {" "}
+                • {journals.length} journal entries analyzed
+              </span>
+            )}
           </p>
         </div>
 
@@ -83,14 +332,18 @@ export default function Resources() {
               <Brain className="w-6 h-6 text-blue-600" />
             </div>
             <h3 className="text-2xl font-bold text-[#1A3A37]">
-              {depressionImprovement}%
+              {depressionImprovement >= 0 ? `${depressionImprovement}%` : `${Math.abs(depressionImprovement)}%`}
             </h3>
             <p className="text-gray-600 text-sm font-medium">
-              Depression Improvement
+              Depression {depressionImprovement >= 0 ? "Improvement" : "Change"}
             </p>
             <div className="flex items-center justify-center gap-1 mt-1">
-              <TrendingDown className="w-4 h-4 text-green-500" />
-              <p className="text-green-500 text-xs">Great progress!</p>
+              {React.createElement(depressionFeedback.icon, { 
+                className: `w-4 h-4 ${depressionFeedback.color}` 
+              })}
+              <p className={`text-xs ${depressionFeedback.color}`}>
+                {depressionFeedback.message}
+              </p>
             </div>
           </div>
 
@@ -100,14 +353,18 @@ export default function Resources() {
               <Heart className="w-6 h-6 text-orange-500" />
             </div>
             <h3 className="text-2xl font-bold text-[#1A3A37]">
-              {stressImprovement}%
+              {stressImprovement >= 0 ? `${stressImprovement}%` : `${Math.abs(stressImprovement)}%`}
             </h3>
             <p className="text-gray-600 text-sm font-medium">
-              Stress Reduction
+              Stress {stressImprovement >= 0 ? "Reduction" : "Change"}
             </p>
             <div className="flex items-center justify-center gap-1 mt-1">
-              <TrendingDown className="w-4 h-4 text-green-500" />
-              <p className="text-green-500 text-xs">Excellent work!</p>
+              {React.createElement(stressFeedback.icon, { 
+                className: `w-4 h-4 ${stressFeedback.color}` 
+              })}
+              <p className={`text-xs ${stressFeedback.color}`}>
+                {stressFeedback.message}
+              </p>
             </div>
           </div>
 
@@ -117,14 +374,18 @@ export default function Resources() {
               <Shield className="w-6 h-6 text-purple-600" />
             </div>
             <h3 className="text-2xl font-bold text-[#1A3A37]">
-              {anxietyImprovement}%
+              {anxietyImprovement >= 0 ? `${anxietyImprovement}%` : `${Math.abs(anxietyImprovement)}%`}
             </h3>
             <p className="text-gray-600 text-sm font-medium">
-              Anxiety Reduction
+              Anxiety {anxietyImprovement >= 0 ? "Reduction" : "Change"}
             </p>
             <div className="flex items-center justify-center gap-1 mt-1">
-              <TrendingDown className="w-4 h-4 text-green-500" />
-              <p className="text-green-500 text-xs">Amazing journey!</p>
+              {React.createElement(anxietyFeedback.icon, { 
+                className: `w-4 h-4 ${anxietyFeedback.color}` 
+              })}
+              <p className={`text-xs ${anxietyFeedback.color}`}>
+                {anxietyFeedback.message}
+              </p>
             </div>
           </div>
         </div>
@@ -137,11 +398,17 @@ export default function Resources() {
             </div>
             <div>
               <h2 className="text-xl font-bold text-[#1A3A37]">
-                15-Day Progress Overview
+                {progressData.length}-Day Progress Overview
               </h2>
               <p className="text-gray-600 text-sm">
                 Track your mental wellness scores over time (Scale: 1-10, lower
                 is better)
+                {journals.length === 0 && (
+                  <span className="text-orange-600 ml-2">
+                    • Sample data shown (start journaling to see your real
+                    progress)
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -270,7 +537,7 @@ export default function Resources() {
                         <span>15 min daily</span>
                         <span className="mx-2">•</span>
                         <span className="text-blue-600">
-                          Current streak: 7 days
+                          {journals.length} entries logged
                         </span>
                       </div>
                     </div>
@@ -406,12 +673,14 @@ export default function Resources() {
                         Best Performance
                       </h4>
                       <p className="text-sm text-gray-600 mb-2">
-                        Your mood is most stable during morning hours.
+                        Your mood is most stable during {stats.bestTime}.
                       </p>
                       <div className="flex items-center text-xs text-gray-500">
-                        <span>Peak time: 8-10 AM</span>
+                        <span>Peak time: {stats.bestTime}</span>
                         <span className="mx-2">•</span>
-                        <span className="text-green-600">92% accuracy</span>
+                        <span className="text-green-600">
+                          {journals.length > 0 ? "Based on your data" : "Sample insight"}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -427,13 +696,18 @@ export default function Resources() {
                         Weekly Pattern
                       </h4>
                       <p className="text-sm text-gray-600 mb-2">
-                        Weekends show improved stress levels - maintain this
-                        balance.
+                        {stats.weekendImprovement > 0
+                          ? `Weekends show ${stats.weekendImprovement}% improved stress levels - maintain this balance.`
+                          : "Keep tracking to identify your weekly patterns."}
                       </p>
                       <div className="flex items-center text-xs text-gray-500">
-                        <span>Weekend improvement</span>
+                        <span>Weekend vs Weekday</span>
                         <span className="mx-2">•</span>
-                        <span className="text-blue-600">35% better</span>
+                        <span className="text-blue-600">
+                          {stats.weekendImprovement > 0
+                            ? `${stats.weekendImprovement}% better`
+                            : "Analyzing..."}
+                        </span>
                       </div>
                     </div>
                   </div>

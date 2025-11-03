@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Loader2,
 } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Progress() {
   const [journalText, setJournalText] = useState("");
@@ -38,6 +39,15 @@ export default function Progress() {
   const videoRef = useRef(null);
   const previewRef = useRef(null);
   const fileInputRef = useRef(null);
+  const { user, getAuthHeaders } = useAuth();
+  const [journalStats, setJournalStats] = useState({
+    total_entries: 0,
+    text_entries: 0,
+    video_entries: 0,
+    current_streak: 0,
+    longest_streak: 0,
+    last_entry_date: null,
+  });
 
   const startVideoRecording = async () => {
     try {
@@ -137,6 +147,28 @@ export default function Progress() {
     }
   };
 
+  // Fetch journal stats on component mount
+  useEffect(() => {
+    fetchJournalStats();
+  }, []);
+
+  const fetchJournalStats = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/journals/stats", {
+        headers: {
+          ...getAuthHeaders(),
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setJournalStats(data.stats);
+      }
+    } catch (error) {
+      console.error("Failed to fetch journal stats:", error);
+    }
+  };
+
   const saveJournalEntry = async () => {
     if (journalText.trim()) {
       try {
@@ -148,6 +180,7 @@ export default function Progress() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
+              ...getAuthHeaders(),
             },
             body: JSON.stringify({
               text: journalText,
@@ -162,7 +195,7 @@ export default function Progress() {
 
         const result = await response.json();
 
-        toast.success("Journal analyzed successfully!", {
+        toast.success("Journal analyzed and saved successfully!", {
           position: "top-right",
           autoClose: 3000,
         });
@@ -171,10 +204,11 @@ export default function Progress() {
         console.log("Text Journal Analysis:", result);
         displayTextAnalysisResults(result);
 
+        // Refresh stats
+        await fetchJournalStats();
+
         // Clear form
         setJournalText("");
-        setJournalStreak(journalStreak + 1);
-        setLastJournalDate("Today");
         setIsAnalyzingText(false);
       } catch (error) {
         console.error("Text journal analysis failed:", error);
@@ -210,7 +244,6 @@ export default function Progress() {
         formData.append("frame_skip", 2);
 
         try {
-          // Start analyzing
           setIsAnalyzing(true);
           setAnalysisProgress("Uploading video...");
 
@@ -238,6 +271,9 @@ export default function Progress() {
 
           const response = await fetch("http://localhost:8000/api/upload-video", {
             method: "POST",
+            headers: {
+              ...getAuthHeaders(),
+            },
             body: formData,
           });
 
@@ -249,16 +285,16 @@ export default function Progress() {
 
           const result = await response.json();
 
-          toast.success("Analysis completed!", {
+          toast.success("Analysis completed and saved!", {
             position: "top-right",
             autoClose: 5000,
           });
 
-          // Handle the complete result
           console.log("Complete Analysis Result:", result);
-
-          // Display results to user
           displayAnalysisResults(result);
+
+          // Refresh stats
+          await fetchJournalStats();
 
           setIsAnalyzing(false);
           setAnalysisProgress("");
@@ -322,7 +358,7 @@ export default function Progress() {
           </p>
         </div>
 
-        {/* Stats Row */}
+        {/* Stats Row - Use Real Data */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           {/* Streak Card */}
           <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm text-center">
@@ -330,7 +366,7 @@ export default function Progress() {
               <Flame className="w-6 h-6 text-orange-500" />
             </div>
             <h3 className="text-2xl font-bold text-[#1A3A37]">
-              {journalStreak}
+              {journalStats.current_streak}
             </h3>
             <p className="text-gray-600 text-sm font-medium">Day Streak</p>
             <p className="text-orange-500 text-xs mt-1">Keep it up!</p>
@@ -341,7 +377,9 @@ export default function Progress() {
             <div className="bg-green-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
               <FileText className="w-6 h-6 text-green-600" />
             </div>
-            <h3 className="text-2xl font-bold text-[#1A3A37]">47</h3>
+            <h3 className="text-2xl font-bold text-[#1A3A37]">
+              {journalStats.text_entries}
+            </h3>
             <p className="text-gray-600 text-sm font-medium">Text Entries</p>
             <p className="text-green-600 text-xs mt-1">Keep writing!</p>
           </div>
@@ -352,19 +390,21 @@ export default function Progress() {
               <VideoIcon className="w-6 h-6 text-blue-600" />
             </div>
             <h3 className="text-2xl font-bold text-[#1A3A37]">
-              {savedVideos.length}
+              {journalStats.video_entries}
             </h3>
             <p className="text-gray-600 text-sm font-medium">Video Journals</p>
             <p className="text-blue-600 text-xs mt-1">Share your story!</p>
           </div>
 
-          {/* Days Active */}
+          {/* Total Entries */}
           <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm text-center">
             <div className="bg-purple-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
               <Calendar className="w-6 h-6 text-purple-600" />
             </div>
-            <h3 className="text-2xl font-bold text-[#1A3A37]">28</h3>
-            <p className="text-gray-600 text-sm font-medium">Days Active</p>
+            <h3 className="text-2xl font-bold text-[#1A3A37]">
+              {journalStats.total_entries}
+            </h3>
+            <p className="text-gray-600 text-sm font-medium">Total Entries</p>
             <p className="text-purple-600 text-xs mt-1">Amazing progress!</p>
           </div>
         </div>

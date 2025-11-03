@@ -1,73 +1,120 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import {
-  Calendar,
-  BookOpen,
+  Brain,
   Heart,
+  Activity,
+  Calendar,
   TrendingUp,
-  Edit3,
-  CheckCircle,
-  X,
+  Award,
   Zap,
-  Flame,
+  CheckCircle,
+  ArrowRight,
+  BarChart3,
+  X,
 } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function DashboardHome() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [quizTaken, setQuizTaken] = useState(false);
   const [showQuizDialog, setShowQuizDialog] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState({});
+  const [journalStats, setJournalStats] = useState({
+    total_entries: 0,
+    current_streak: 0,
+    longest_streak: 0,
+  });
+  const [showQuiz, setShowQuiz] = useState(false);
+  const [quizCompleted, setQuizCompleted] = useState(false);
+  const [quizResults, setQuizResults] = useState(null);
 
   const quizQuestions = [
     {
       id: 1,
-      question: "How have you been feeling emotionally today?",
+      question: "How would you rate your overall mood today?",
+      category: "mood",
       options: [
-        "Very stressed and anxious",
-        "Somewhat overwhelmed",
-        "Neutral",
-        "Mostly positive",
-        "Excellent and energized",
+        { value: 5, label: "Very positive and energetic" },
+        { value: 4, label: "Generally good" },
+        { value: 3, label: "Neutral, neither good nor bad" },
+        { value: 2, label: "Somewhat low" },
+        { value: 1, label: "Very low and unmotivated" },
       ],
     },
     {
       id: 2,
       question: "How well did you sleep last night?",
-      options: ["Very poorly", "Poorly", "Okay", "Well", "Excellently"],
+      category: "sleep",
+      options: [
+        { value: 5, label: "Excellent, I feel fully rested" },
+        { value: 4, label: "Good, slept through the night" },
+        { value: 3, label: "Okay, had some interruptions" },
+        { value: 2, label: "Poor, woke up several times" },
+        { value: 1, label: "Very poor, barely slept" },
+      ],
     },
     {
       id: 3,
-      question: "How motivated do you feel to work on your goals?",
+      question: "How are your stress levels today?",
+      category: "stress",
       options: [
-        "Not motivated at all",
-        "Slightly motivated",
-        "Moderately motivated",
-        "Very motivated",
-        "Extremely motivated",
+        { value: 5, label: "Very relaxed and calm" },
+        { value: 4, label: "Mostly calm with minor stress" },
+        { value: 3, label: "Moderate stress levels" },
+        { value: 2, label: "Quite stressed" },
+        { value: 1, label: "Extremely stressed and overwhelmed" },
       ],
     },
     {
       id: 4,
-      question: "How would you rate your physical activity today?",
+      question: "How connected do you feel to others?",
+      category: "social",
       options: [
-        "Sedentary",
-        "Minimal activity",
-        "Moderate activity",
-        "Active",
-        "Very active",
+        { value: 5, label: "Very connected and supported" },
+        { value: 4, label: "Fairly connected" },
+        { value: 3, label: "Somewhat isolated" },
+        { value: 2, label: "Quite lonely" },
+        { value: 1, label: "Very isolated and alone" },
       ],
     },
     {
       id: 5,
-      question: "How connected do you feel to your support system?",
+      question: "How would you describe your anxiety level?",
+      category: "anxiety",
       options: [
-        "Very isolated",
-        "Somewhat isolated",
-        "Neutral",
-        "Well supported",
-        "Strongly connected",
+        { value: 5, label: "Not anxious at all" },
+        { value: 4, label: "Slightly anxious" },
+        { value: 3, label: "Moderately anxious" },
+        { value: 2, label: "Very anxious" },
+        { value: 1, label: "Extremely anxious" },
+      ],
+    },
+    {
+      id: 6,
+      question: "How motivated do you feel today?",
+      category: "motivation",
+      options: [
+        { value: 5, label: "Highly motivated and productive" },
+        { value: 4, label: "Fairly motivated" },
+        { value: 3, label: "Neutral motivation" },
+        { value: 2, label: "Low motivation" },
+        { value: 1, label: "No motivation at all" },
+      ],
+    },
+    {
+      id: 7,
+      question: "How are you managing daily tasks?",
+      category: "functioning",
+      options: [
+        { value: 5, label: "Managing everything easily" },
+        { value: 4, label: "Handling most tasks well" },
+        { value: 3, label: "Struggling with some tasks" },
+        { value: 2, label: "Difficulty with most tasks" },
+        { value: 1, label: "Unable to complete basic tasks" },
       ],
     },
   ];
@@ -119,10 +166,36 @@ export default function DashboardHome() {
     },
   ];
 
+  useEffect(() => {
+    fetchJournalStats();
+  }, []);
+
+  const fetchJournalStats = async () => {
+    try {
+      const response = await fetch(
+        "http://localhost:8000/api/journals/stats",
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setJournalStats(data.stats);
+      }
+    } catch (error) {
+      console.error("Failed to fetch journal stats:", error);
+    }
+  };
+
   const handleStartQuiz = () => {
-    setShowQuizDialog(true);
+    setShowQuiz(true);
     setCurrentQuestion(0);
     setSelectedAnswers({});
+    setQuizCompleted(false);
+    setQuizResults(null);
   };
 
   const handleSelectAnswer = (option) => {
@@ -160,17 +233,434 @@ export default function DashboardHome() {
     }
   };
 
+  const calculateResults = () => {
+    const categoryScores = {};
+    let totalScore = 0;
+    let maxScore = 0;
+
+    quizQuestions.forEach((q) => {
+      const answer = selectedAnswers[q.id] || 0;
+      totalScore += answer;
+      maxScore += 5;
+
+      if (!categoryScores[q.category]) {
+        categoryScores[q.category] = { total: 0, count: 0 };
+      }
+      categoryScores[q.category].total += answer;
+      categoryScores[q.category].count += 1;
+    });
+
+    const percentageScore = Math.round((totalScore / maxScore) * 100);
+
+    // Calculate category averages
+    const categories = {};
+    Object.keys(categoryScores).forEach((cat) => {
+      categories[cat] = Math.round(
+        (categoryScores[cat].total / (categoryScores[cat].count * 5)) * 100
+      );
+    });
+
+    // Determine wellness level
+    let wellnessLevel = "";
+    let wellnessColor = "";
+    let recommendations = [];
+
+    if (percentageScore >= 80) {
+      wellnessLevel = "Excellent";
+      wellnessColor = "text-green-600";
+      recommendations = [
+        "You're doing great! Keep up your current wellness practices.",
+        "Consider sharing your strategies with others who might benefit.",
+        "Continue your regular self-care routines.",
+      ];
+    } else if (percentageScore >= 60) {
+      wellnessLevel = "Good";
+      wellnessColor = "text-blue-600";
+      recommendations = [
+        "You're managing well overall. Focus on areas that need attention.",
+        "Try incorporating more stress-relief activities into your routine.",
+        "Maintain your current positive habits.",
+      ];
+    } else if (percentageScore >= 40) {
+      wellnessLevel = "Fair";
+      wellnessColor = "text-orange-600";
+      recommendations = [
+        "Consider talking to someone about how you're feeling.",
+        "Try establishing a regular sleep schedule.",
+        "Engage in activities that bring you joy.",
+        "Consider reaching out to supportive friends or family.",
+      ];
+    } else {
+      wellnessLevel = "Needs Attention";
+      wellnessColor = "text-red-600";
+      recommendations = [
+        "Your wellness needs attention. Consider speaking with a mental health professional.",
+        "Prioritize self-care and don't hesitate to ask for help.",
+        "Start with small, manageable steps to improve your wellbeing.",
+        "Reach out to trusted friends, family, or a counselor.",
+      ];
+    }
+
+    setQuizResults({
+      percentageScore,
+      wellnessLevel,
+      wellnessColor,
+      categories,
+      recommendations,
+      totalAnswered: Object.keys(selectedAnswers).length,
+      totalQuestions: quizQuestions.length,
+    });
+    setQuizCompleted(true);
+  };
+
+  const getProgressPercentage = () => {
+    return ((currentQuestion + 1) / quizQuestions.length) * 100;
+  };
+
+  const getCategoryIcon = (category) => {
+    const icons = {
+      mood: Brain,
+      sleep: Activity,
+      stress: Heart,
+      social: TrendingUp,
+      anxiety: Zap,
+      motivation: Award,
+      functioning: CheckCircle,
+    };
+    return icons[category] || Brain;
+  };
+
+  const getCategoryLabel = (category) => {
+    const labels = {
+      mood: "Mood",
+      sleep: "Sleep Quality",
+      stress: "Stress Management",
+      social: "Social Connection",
+      anxiety: "Anxiety Level",
+      motivation: "Motivation",
+      functioning: "Daily Functioning",
+    };
+    return labels[category] || category;
+  };
+
+  if (showQuiz && !quizCompleted) {
+    const question = quizQuestions[currentQuestion];
+    const hasAnswer = selectedAnswers[question.id] !== undefined;
+
+    return (
+      <div className="min-h-screen bg-linear-to-br from-teal-50 to-blue-50 p-6">
+        <div className="max-w-3xl mx-auto">
+          {/* Progress Bar */}
+          <div className="mb-8">
+            <div className="flex justify-between items-center mb-2">
+              <h2 className="text-lg font-semibold text-gray-700">
+                Daily Wellness Check
+              </h2>
+              <span className="text-sm text-gray-600">
+                Question {currentQuestion + 1} of {quizQuestions.length}
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-teal-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${getProgressPercentage()}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Question Card */}
+          <div className="bg-white rounded-2xl shadow-lg p-8 mb-6">
+            <h3 className="text-2xl font-bold text-gray-900 mb-8">
+              {question.question}
+            </h3>
+
+            <div className="space-y-3">
+              {question.options.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => handleSelectAnswer(option.value)}
+                  className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+                    selectedAnswers[question.id] === option.value
+                      ? "border-teal-600 bg-teal-50"
+                      : "border-gray-200 hover:border-teal-300 hover:bg-gray-50"
+                  }`}
+                >
+                  <div className="flex items-center">
+                    <div
+                      className={`w-6 h-6 rounded-full border-2 mr-4 flex items-center justify-center ${
+                        selectedAnswers[question.id] === option.value
+                          ? "border-teal-600 bg-teal-600"
+                          : "border-gray-300"
+                      }`}
+                    >
+                      {selectedAnswers[question.id] === option.value && (
+                        <CheckCircle className="w-4 h-4 text-white" />
+                      )}
+                    </div>
+                    <span className="text-gray-700">{option.label}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Navigation Buttons */}
+          <div className="flex justify-between">
+            <button
+              onClick={handlePrevious}
+              disabled={currentQuestion === 0}
+              className="px-6 py-3 rounded-lg font-medium text-gray-700 bg-white border-2 border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Previous
+            </button>
+            <button
+              onClick={handleNext}
+              disabled={!hasAnswer}
+              className="px-6 py-3 rounded-lg font-medium text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+            >
+              {currentQuestion === quizQuestions.length - 1 ? "Submit" : "Next"}
+              <ArrowRight className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (quizCompleted && quizResults) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-teal-50 to-blue-50 p-6">
+        <div className="max-w-4xl mx-auto">
+          {/* Results Header */}
+          <div className="bg-white rounded-2xl shadow-lg p-8 mb-6">
+            <div className="text-center mb-6">
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">
+                Your Wellness Score
+              </h2>
+              <p className="text-gray-600">
+                Based on {quizResults.totalAnswered} responses
+              </p>
+            </div>
+
+            {/* Overall Score */}
+            <div className="flex items-center justify-center mb-6">
+              <div className="relative w-48 h-48">
+                <svg className="transform -rotate-90 w-48 h-48">
+                  <circle
+                    cx="96"
+                    cy="96"
+                    r="88"
+                    stroke="#e5e7eb"
+                    strokeWidth="12"
+                    fill="none"
+                  />
+                  <circle
+                    cx="96"
+                    cy="96"
+                    r="88"
+                    stroke="#0d9488"
+                    strokeWidth="12"
+                    fill="none"
+                    strokeDasharray={`${2 * Math.PI * 88}`}
+                    strokeDashoffset={`${
+                      2 * Math.PI * 88 * (1 - quizResults.percentageScore / 100)
+                    }`}
+                    className="transition-all duration-1000"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-5xl font-bold text-gray-900">
+                    {quizResults.percentageScore}
+                  </span>
+                  <span className="text-gray-600">out of 100</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-center">
+              <h3
+                className={`text-2xl font-bold ${quizResults.wellnessColor} mb-2`}
+              >
+                {quizResults.wellnessLevel}
+              </h3>
+              <p className="text-gray-600">Your overall wellness status today</p>
+            </div>
+          </div>
+
+          {/* Category Breakdown */}
+          <div className="bg-white rounded-2xl shadow-lg p-8 mb-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <BarChart3 className="w-6 h-6 text-teal-600" />
+              Category Breakdown
+            </h3>
+
+            <div className="space-y-4">
+              {Object.entries(quizResults.categories).map(
+                ([category, score]) => {
+                  const Icon = getCategoryIcon(category);
+                  return (
+                    <div key={category}>
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="flex items-center gap-2">
+                          <Icon className="w-5 h-5 text-gray-600" />
+                          <span className="font-medium text-gray-700">
+                            {getCategoryLabel(category)}
+                          </span>
+                        </div>
+                        <span className="font-semibold text-gray-900">
+                          {score}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full transition-all duration-500 ${
+                            score >= 80
+                              ? "bg-green-500"
+                              : score >= 60
+                              ? "bg-blue-500"
+                              : score >= 40
+                              ? "bg-orange-500"
+                              : "bg-red-500"
+                          }`}
+                          style={{ width: `${score}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                }
+              )}
+            </div>
+          </div>
+
+          {/* Recommendations */}
+          <div className="bg-white rounded-2xl shadow-lg p-8 mb-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <Zap className="w-6 h-6 text-teal-600" />
+              Personalized Recommendations
+            </h3>
+
+            <div className="space-y-3">
+              {quizResults.recommendations.map((rec, index) => (
+                <div
+                  key={index}
+                  className="flex items-start gap-3 p-4 bg-teal-50 rounded-lg"
+                >
+                  <CheckCircle className="w-5 h-5 text-teal-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-gray-700">{rec}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-4">
+            <button
+              onClick={() => {
+                setShowQuiz(false);
+                setQuizCompleted(false);
+              }}
+              className="flex-1 px-6 py-3 rounded-lg font-medium text-white bg-teal-600 hover:bg-teal-700 transition-colors"
+            >
+              Return to Dashboard
+            </button>
+            <button
+              onClick={handleStartQuiz}
+              className="flex-1 px-6 py-3 rounded-lg font-medium text-teal-600 bg-white border-2 border-teal-600 hover:bg-teal-50 transition-colors"
+            >
+              Retake Quiz
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Main Dashboard View
   return (
-    <div className="min-h-screen bg-white p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* --- Welcome Section --- */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-[#1A3A37] mb-2">
-            Welcome Back, Dhyaneshvar
-          </h1>
-          <p className="text-gray-600">
-            Continue your wellness journey with today's activities and insights.
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Welcome Section */}
+        <div className="bg-gradient-to-r from-teal-500 to-blue-600 rounded-2xl p-8 text-white mb-8">
+          <h2 className="text-3xl font-bold mb-4">
+            Welcome back, {user?.full_name || "User"}!
+          </h2>
+          <p className="text-lg opacity-90 mb-6">
+            Take control of your mental health with personalized resources and
+            professional support.
           </p>
+          <button
+            onClick={handleStartQuiz}
+            className="bg-white text-teal-600 px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors inline-flex items-center gap-2"
+          >
+            <CheckCircle className="w-5 h-5" />
+            Start Daily Wellness Check
+          </button>
+        </div>
+
+        {/* Quick Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          {/* ...existing stats cards... */}
+          <div className="bg-white rounded-xl p-6 shadow-lg">
+            <div className="flex items-center">
+              <div className="p-3 rounded-full bg-green-100">
+                <CheckCircle className="w-6 h-6 text-green-600" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">
+                  Journal Entries
+                </p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {journalStats.total_entries}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl p-6 shadow-lg">
+            <div className="flex items-center">
+              <div className="p-3 rounded-full bg-orange-100">
+                <Activity className="w-6 h-6 text-orange-600" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">
+                  Current Streak
+                </p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {journalStats.current_streak} days
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl p-6 shadow-lg">
+            <div className="flex items-center">
+              <div className="p-3 rounded-full bg-blue-100">
+                <TrendingUp className="w-6 h-6 text-blue-600" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">
+                  Longest Streak
+                </p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {journalStats.longest_streak} days
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl p-6 shadow-lg">
+            <div className="flex items-center">
+              <div className="p-3 rounded-full bg-purple-100">
+                <Award className="w-6 h-6 text-purple-600" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">
+                  Wellness Score
+                </p>
+                <p className="text-2xl font-bold text-gray-900">--</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* --- Activity Heatmap --- */}

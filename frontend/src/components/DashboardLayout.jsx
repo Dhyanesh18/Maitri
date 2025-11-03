@@ -1,7 +1,21 @@
 import React from "react";
 import { NavLink, Outlet, Link } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function DashboardLayout() {
+  const { user, logout } = useAuth();
+
+  // Get initials from full name
+  const getInitials = (name) => {
+    if (!name) return "U";
+    return name
+      .split(" ")
+      .map((word) => word[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
   return (
     <div className="h-screen bg-gray-50 flex overflow-hidden">
       {/* Left Sidebar - Fixed */}
@@ -152,14 +166,41 @@ export default function DashboardLayout() {
 
         {/* User Info at Bottom */}
         <div className="border-t border-gray-200 p-4 flex-shrink-0">
-          <div className="flex items-center">
-            <div className="w-8 h-8 bg-[#1A3A37] rounded-full flex items-center justify-center">
-              <span className="text-white text-sm font-medium">U</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1 min-w-0">
+              <div className="w-8 h-8 bg-[#1A3A37] rounded-full flex items-center justify-center flex-shrink-0">
+                <span className="text-white text-sm font-medium">
+                  {getInitials(user?.full_name)}
+                </span>
+              </div>
+              <div className="ml-3 min-w-0 flex-1">
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {user?.full_name || "User"}
+                </p>
+                <p className="text-xs text-gray-500 truncate">
+                  {user?.email || "welcome@maitri.com"}
+                </p>
+              </div>
             </div>
-            <div className="ml-3">
-              <p className="text-sm font-medium text-gray-900">User</p>
-              <p className="text-xs text-gray-500">Welcome back!</p>
-            </div>
+            <button
+              onClick={logout}
+              className="ml-2 text-gray-400 hover:text-gray-600 flex-shrink-0"
+              title="Logout"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                />
+              </svg>
+            </button>
           </div>
         </div>
       </div>

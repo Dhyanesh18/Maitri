@@ -116,37 +116,35 @@ class EmotionalSupportChatbot:
         Args:
             sessions_dir: Directory to store chat session JSON files
         """
-        self.groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        self.model = "llama-3.1-70b-versatile"
         self.sessions_dir = Path(sessions_dir)
         self.sessions_dir.mkdir(exist_ok=True)
+        self.sessions: Dict[str, Dict] = {}
         
         # System prompt for emotional support
-        self.system_prompt = """You are a warm, empathetic, and supportive AI companion designed to provide emotional support and lighten the mood of users. Your purpose is to:
+        self.system_prompt = """You are Maitri, a compassionate and empathetic mental health support companion. Your role is to:
 
-1. **Listen actively** - Show genuine interest in what the user shares
-2. **Validate feelings** - Acknowledge emotions without judgment
-3. **Provide comfort** - Offer reassurance and encouragement
-4. **Lighten the mood** - Use appropriate humor, positivity, and uplifting messages when suitable
-5. **Be conversational** - Engage naturally, ask follow-up questions, and remember context from the conversation
+1. Listen actively and validate emotions
+2. Provide supportive, non-judgmental responses
+3. Offer coping strategies and gentle guidance
+4. Encourage professional help when appropriate
+5. Use warm, conversational language
+6. Be aware of the user's recent mental health trends to provide personalized support
 
-**Guidelines:**
-- Keep responses concise but warm (2-4 sentences usually)
-- Use casual, friendly language
-- Show empathy through your words
-- Offer gentle encouragement and perspective when appropriate
-- Use emojis occasionally to add warmth (but don't overdo it)
-- If user seems distressed, prioritize support over humor
-- Remember details from earlier in the conversation
-- Ask open-ended questions to encourage sharing
-- Celebrate small wins and positive moments
+IMPORTANT GUIDELINES:
+- Never diagnose conditions
+- Always prioritize user safety
+- If user mentions self-harm or suicide, encourage immediate professional help
+- Be culturally sensitive and inclusive
+- Use simple, accessible language
+- Show genuine care and understanding
 
-**Important:**
-- You're not a replacement for professional help
-- If user mentions self-harm or crisis, gently suggest professional resources
-- Focus on emotional support, not medical/clinical advice
-- Maintain appropriate boundaries while being supportive
-
-Be the friend who's there to listen, understand, and help brighten their day. 🌟"""
+When you have access to the user's recent mental health scores, use this information to:
+- Acknowledge improvements or challenges
+- Provide context-aware support
+- Celebrate progress
+- Offer relevant coping strategies based on their trends"""
         
         print(f"Emotional Support Chatbot initialized")
         print(f"Sessions directory: {self.sessions_dir}")
@@ -162,66 +160,126 @@ Be the friend who's there to listen, understand, and help brighten their day. �
         return ChatSession(session_id, self.sessions_dir)
     
     def chat(
-        self,
-        session_id: str,
-        user_message: str,
-        temperature: float = 0.7,
-        max_tokens: int = 500
-    ) -> Dict:
+        self, 
+        session_id: str, 
+        user_message: str, 
+        temperature: float = 0.7, 
+        max_tokens: int = 500,
+        mental_health_context: Optional[List[Dict]] = None
+    ) -> dict:
         """
-        Send a message and get a response
+        Chat with user in given session (message is already anonymized)
         
         Args:
-            session_id: Unique session identifier
-            user_message: User's message
-            temperature: Creativity level (0.0-1.0)
+            session_id: Session identifier
+            user_message: User's message (already anonymized by API endpoint)
+            temperature: Response creativity
             max_tokens: Maximum response length
-        
-        Returns:
-            Dict with response, session info, and metadata
+            mental_health_context: Recent mental health scores for context
         """
         try:
-            # Get or create session
-            session = self.get_session(session_id)
+            if session_id not in self.sessions:
+                return {
+                    'success': False,
+                    'error': f'Session {session_id} not found'
+                }
             
-            # Add user message to history
-            session.add_message('user', user_message)
+            session = self.sessions[session_id]
             
-            # Prepare messages for LLM (system prompt + history)
-            messages = [
-                {'role': 'system', 'content': self.system_prompt}
-            ] + session.get_messages_for_llm()
+            # Add user message to history (already anonymized)
+            session['messages'].append({
+                'role': 'user',
+                'content': user_message,
+                'timestamp': datetime.utcnow().isoformat()
+            })
             
-            # Call Groq API
-            response = self.groq_client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=messages,
+            # Prepare system prompt with mental health context
+            enhanced_system_prompt = self.system_prompt
+            
+            if mental_health_context and len(mental_health_context) > 0:
+                context_str = "\n\n**USER'S RECENT MENTAL HEALTH TRENDS (Last 5 Days):**\n"
+                context_str += "Use this information to provide personalized, context-aware support.\n\n"
+                
+                for day_data in mental_health_context:
+                    context_str += f"📅 {day_data['date']}:\n"
+                    context_str += f"  • Depression: {day_data['depression']}/100\n"
+                    context_str += f"  • Anxiety: {day_data['anxiety']}/100\n"
+                    context_str += f"  • Stress: {day_data['stress']}/100\n"
+                    context_str += f"  • Overall Mental Health: {day_data['overall']}/100\n\n"
+                
+                # Add trend analysis
+                if len(mental_health_context) > 1:
+                    latest = mental_health_context[0]
+                    oldest = mental_health_context[-1]
+                    
+                    context_str += "**TRENDS:**\n"
+                    
+                    dep_change = latest['depression'] - oldest['depression']
+                    anx_change = latest['anxiety'] - oldest['anxiety']
+                    str_change = latest['stress'] - oldest['stress']
+                    
+                    if dep_change < -10:
+                        context_str += "✅ Depression scores improving\n"
+                    elif dep_change > 10:
+                        context_str += "⚠️ Depression scores increasing - provide extra support\n"
+                    
+                    if anx_change < -10:
+                        context_str += "✅ Anxiety levels decreasing\n"
+                    elif anx_change > 10:
+                        context_str += "⚠️ Anxiety levels rising - suggest calming techniques\n"
+                    
+                    if str_change < -10:
+                        context_str += "✅ Stress levels improving\n"
+                    elif str_change > 10:
+                        context_str += "⚠️ Stress levels elevated - recommend stress management\n"
+                
+                context_str += "\nUse this context to provide empathetic, personalized responses that acknowledge their journey."
+                
+                enhanced_system_prompt += context_str
+            
+            # Get response from LLM with context
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {'role': 'system', 'content': enhanced_system_prompt},
+                    *[{'role': msg['role'], 'content': msg['content']} 
+                      for msg in session['messages'][-10:]]  # Last 10 messages for context
+                ],
                 temperature=temperature,
-                max_tokens=max_tokens,
-                top_p=0.9
+                max_tokens=max_tokens
             )
             
             assistant_message = response.choices[0].message.content
             
             # Add assistant response to history
-            session.add_message('assistant', assistant_message)
+            session['messages'].append({
+                'role': 'assistant',
+                'content': assistant_message,
+                'timestamp': datetime.utcnow().isoformat()
+            })
+            
+            session['last_activity'] = datetime.utcnow()
+            session['message_count'] += 1
+            
+            # Save session
+            self._save_session(session_id, session)
             
             return {
                 'success': True,
                 'session_id': session_id,
-                'user_message': user_message,
                 'assistant_message': assistant_message,
-                'session_info': session.get_session_info(),
-                'timestamp': datetime.utcnow().isoformat()
+                'session_info': {
+                    'message_count': session['message_count'],
+                    'created_at': session['created_at'].isoformat(),
+                    'last_activity': session['last_activity'].isoformat()
+                }
             }
             
         except Exception as e:
-            print(f"Chat error: {e}")
+            print(f"Chat error for session {session_id}: {e}")
             return {
                 'success': False,
-                'error': str(e),
-                'session_id': session_id,
-                'timestamp': datetime.utcnow().isoformat()
+                'error': str(e)
             }
     
     def get_chat_history(self, session_id: str) -> Dict:

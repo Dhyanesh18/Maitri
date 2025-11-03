@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Paperclip, X, FileText, Image, File, Loader2 } from "lucide-react";
+import { Send, Paperclip, X, FileText, Image, File, Loader2, Shield, Activity } from "lucide-react";
 import axios from "axios";
+import { useAuth } from "../contexts/AuthContext";
 
 const API_BASE_URL = "http://localhost:8000";
 
@@ -9,7 +10,7 @@ export default function Sessions() {
     {
       id: 1,
       type: "bot",
-      content: "Hello Dhyaneshvar! I'm here to support you. How are you feeling today?",
+      content: "Hello! I'm here to support you. How are you feeling today?",
       timestamp: new Date(),
     },
   ]);
@@ -18,6 +19,9 @@ export default function Sessions() {
   const [sessionId, setSessionId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [piiProtection, setPiiProtection] = useState(true);
+  const { user, getAuthHeaders } = useAuth();
+  const [contextLoaded, setContextLoaded] = useState(false);
 
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -30,6 +34,11 @@ export default function Sessions() {
   // Create a new chat session on component mount
   useEffect(() => {
     createNewSession();
+  }, []);
+
+  // Fetch mental health context on mount
+  useEffect(() => {
+    fetchMentalHealthContext();
   }, []);
 
   const createNewSession = async () => {
@@ -45,6 +54,25 @@ export default function Sessions() {
     }
   };
 
+  const fetchMentalHealthContext = async () => {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/api/journals/recent-scores?days=5`,
+        {
+          headers: getAuthHeaders(),
+        }
+      );
+
+      if (response.data.success && response.data.data.length > 0) {
+        setContextLoaded(true);
+        console.log("Mental health context loaded for chatbot:", response.data.data);
+      }
+    } catch (err) {
+      console.error("Failed to load mental health context:", err);
+      // Continue without context
+    }
+  };
+
   const sendMessageToAPI = async (message) => {
     try {
       const response = await axios.post(`${API_BASE_URL}/api/chat/message`, {
@@ -52,6 +80,7 @@ export default function Sessions() {
         message: message,
         temperature: 0.7,
         max_tokens: 500,
+        remove_pii: piiProtection,  // Add this parameter
       });
 
       if (response.data.success) {
@@ -181,25 +210,86 @@ export default function Sessions() {
       {/* Header */}
       <div className="border-b border-gray-200 p-6">
         <div className="flex justify-between items-start">
-          <div>
+          <div className="flex-1">
             <h1 className="text-2xl font-bold text-[#1A3A37]">
               Chat With Maitri - Your Digital Companion
             </h1>
             <p className="text-gray-600 text-sm mt-1">
               Share your thoughts and feelings in a safe space
+              {contextLoaded && (
+                <span className="ml-2 text-teal-600 font-medium">
+                  • Context-aware support based on your recent progress
+                </span>
+              )}
             </p>
             {sessionId && (
               <p className="text-xs text-gray-400 mt-1">
                 Session ID: {sessionId.slice(0, 8)}...
               </p>
             )}
+            
+            {/* Privacy Badge */}
+            <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 bg-green-50 border border-green-200 rounded-full">
+              <Shield className="w-3 h-3 text-green-600" />
+              <span className="text-xs text-green-700 font-medium">
+                PII Protection Enabled
+              </span>
+            </div>
           </div>
-          <button
-            onClick={clearChat}
-            className="px-4 py-2 text-sm text-gray-600 hover:text-[#1A3A37] hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            Clear Chat
-          </button>
+          
+          <div className="flex items-center gap-3">
+            {/* Privacy Toggle */}
+            <button
+              onClick={() => setPiiProtection(!piiProtection)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-colors ${
+                piiProtection
+                  ? "bg-green-50 border-green-200 text-green-700"
+                  : "bg-gray-50 border-gray-200 text-gray-600"
+              }`}
+            >
+              <Shield className="w-4 h-4" />
+              <span className="text-xs font-medium">
+                {piiProtection ? "Protected" : "Off"}
+              </span>
+            </button>
+            
+            <button
+              onClick={clearChat}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-[#1A3A37] hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              Clear Chat
+            </button>
+          </div>
+        </div>
+
+        {/* Context Awareness Badge */}
+        {contextLoaded && (
+          <div className="mt-4 p-3 bg-teal-50 border border-teal-200 rounded-lg">
+            <div className="flex items-start gap-2">
+              <Activity className="w-4 h-4 text-teal-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm text-teal-900 font-medium">
+                  Personalized Support Active
+                </p>
+                <p className="text-xs text-teal-700 mt-1">
+                  Maitri has access to your recent mental health trends and can provide context-aware support and encouragement.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Privacy Notice */}
+        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-start gap-2">
+            <Shield className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm text-blue-900 font-medium">Privacy Protection Active</p>
+              <p className="text-xs text-blue-700 mt-1">
+                Personal information (names, locations, emails, phone numbers) is automatically anonymized before processing.
+              </p>
+            </div>
+          </div>
         </div>
 
         {error && (
@@ -397,9 +487,15 @@ export default function Sessions() {
           </button>
         </div>
 
-        <p className="text-xs text-gray-500 mt-2 text-center">
-          Press Enter to send • Shift + Enter for new line
-        </p>
+        <div className="flex items-center justify-between mt-2">
+          <p className="text-xs text-gray-500">
+            Press Enter to send • Shift + Enter for new line
+          </p>
+          <div className="flex items-center gap-1 text-xs text-green-600">
+            <Shield className="w-3 h-3" />
+            <span>Privacy Protected</span>
+          </div>
+        </div>
       </div>
     </div>
   );

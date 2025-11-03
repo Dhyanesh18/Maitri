@@ -9,34 +9,45 @@ import Sessions from "./pages/Sessions";
 import Progress from "./pages/Progress";
 import Resources from "./pages/Resources";
 import Profile from "./pages/Profile";
+import { AuthProvider } from "./contexts/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<RiveHero />} />
-        <Route path="/home" element={<Home />} />
-        <Route path="/dashboard" element={<DashboardLayout />}>
-          <Route index element={<DashboardHome />} />
-          <Route path="sessions" element={<Sessions />} />
-          <Route path="progress" element={<Progress />} />
-          <Route path="resources" element={<Resources />} />
-          <Route path="profile" element={<Profile />} />
-        </Route>
-      </Routes>
-      <ToastContainer
-        position="top-right"
-        autoClose={3000}
-        hideProgressBar={false}
-        newestOnTop={false}
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-        theme="light"
-      />
-    </Router>
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/" element={<RiveHero />} />
+          <Route path="/home" element={<Home />} />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<DashboardHome />} />
+            <Route path="sessions" element={<Sessions />} />
+            <Route path="progress" element={<Progress />} />
+            <Route path="resources" element={<Resources />} />
+            <Route path="profile" element={<Profile />} />
+          </Route>
+        </Routes>
+        <ToastContainer
+          position="top-right"
+          autoClose={3000}
+          hideProgressBar={false}
+          newestOnTop={false}
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+          theme="light"
+        />
+      </Router>
+    </AuthProvider>
   );
 }
 

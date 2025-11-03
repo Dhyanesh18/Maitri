@@ -3,7 +3,7 @@ FastAPI application for multimodal mental health analysis pipeline
 Combines video emotion detection, audio analysis, transcription, and text analysis
 """
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Form, Depends
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -32,6 +32,13 @@ from emotional_support_chatbot import EmotionalSupportChatbot
 from audio.text_analysis_pii_removal import remove_pii, analyze_text_emotion as analyze_text_llm
 from audio.text_classification import analyze_text_emotion as analyze_emotion_local
 from audio.depression_text import analyze_text_depression
+from models.user import UserCreate, UserLogin, Token, UserResponse, verify_password, get_password_hash
+from database import Database, get_users_collection
+from auth import create_access_token, get_current_active_user
+from datetime import datetime
+from bson import ObjectId
+from services.journal_service import JournalService
+from models.journal import JournalType
 
 class PrivacyModeRequest(str, Enum):
     FULL_PRIVACY = "full_privacy"
@@ -431,6 +438,7 @@ class ChatRequest(BaseModel):
     message: str
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = 500
+    remove_pii: bool = True  # Default to True for privacy
 
 class ChatResponse(BaseModel):
     success: bool
@@ -467,6 +475,7 @@ video_service = VideoService(file_manager, analysis_service)
 async def startup_event():
     """Initialize required directories on startup"""
     file_manager.setup_directories()
+    await Database.connect_db()
     print("Application started successfully")
     print("Multimodal mental health analysis pipeline ready")
     print("Privacy modes: FULL_PRIVACY and ANONYMIZED available")
@@ -475,6 +484,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
+    await Database.close_db()
     print("Shutting down application")
 
 
@@ -519,7 +529,8 @@ async def upload_video(
     file: UploadFile = File(...),
     privacy_mode: PrivacyModeRequest = Form(PrivacyModeRequest.ANONYMIZED),
     interval_seconds: int = Form(5),
-    frame_skip: int = Form(2)
+    frame_skip: int = Form(2),
+    current_user = Depends(get_current_active_user)
 ):
     """
     Upload a video for comprehensive multimodal mental health analysis
@@ -529,6 +540,7 @@ async def upload_video(
     upload_path = None
     
     print("\n--- New Upload Request Received ---")
+    print(f"User ID: {current_user.id}")
     
     try:
         if not file.filename:
@@ -656,6 +668,21 @@ async def upload_video(
     # Save complete results
     file_manager.save_result(task_id, result_dict)
     
+    # Save to MongoDB
+    journal_data = {
+        "user_id": current_user.id,
+        "journal_type": "video",
+        "privacy_mode": privacy_mode.value,
+        "video_path": str(upload_path)
+    }
+    
+    db_journal_id = await JournalService.create_journal_entry(
+        user_id=current_user.id,
+        journal_data=journal_data,
+        analysis_result=result_dict
+    )
+    
+    print(f"Video journal saved to database with ID: {db_journal_id}")
     print(f"Analysis completed for task: {task_id}")
     
     # Extract summary for response
@@ -666,9 +693,9 @@ async def upload_video(
     return AnalysisResultResponse(
         task_id=task_id,
         mental_health_score=summary.get('mental_health_score', 0),
-        depression_score=summary.get('depression_score', 0),  # NEW
-        anxiety_score=summary.get('anxiety_score', 0),        # NEW
-        stress_score=summary.get('stress_score', 0),          # NEW
+        depression_score=summary.get('depression_score', 0),
+        anxiety_score=summary.get('anxiety_score', 0),
+        stress_score=summary.get('stress_score', 0),
         risk_level=summary.get('risk_level', 'unknown'),
         confidence=summary.get('confidence', 0.0),
         video_emotion=summary.get('video_emotion', 'neutral'),
@@ -850,28 +877,80 @@ async def create_chat_session():
     }
 
 @app.post("/api/chat/message", response_model=ChatResponse)
-async def send_chat_message(request: ChatRequest):
+async def send_chat_message(
+    request: ChatRequest,
+    current_user = Depends(get_current_active_user)
+):
     """
-    Send a message to the emotional support chatbot
-    
-    Parameters:
-    - session_id: Session identifier (optional, creates new if not provided)
-    - message: User's message
-    - temperature: Response creativity (0.0-1.0)
-    - max_tokens: Maximum response length
+    Send a message to the emotional support chatbot with optional PII removal and mental health context
     """
     try:
-        # Create new session if not provided
         session_id = request.session_id
         if not session_id:
             session_id = chatbot_service.create_session()
         
-        # Get chatbot response
+        # Conditionally remove PII based on user preference
+        message_to_send = request.message
+        if request.remove_pii:
+            print(f"[Chat] Applying PII removal")
+            message_to_send = remove_pii(request.message)
+        else:
+            print(f"[Chat] PII removal disabled by user")
+        
+        # Fetch recent mental health scores for context
+        try:
+            journals_collection = await JournalService.get_journals_collection()
+            from datetime import timedelta
+            cutoff_date = datetime.utcnow() - timedelta(days=5)
+            
+            journals = await journals_collection.find({
+                "user_id": current_user.id,
+                "is_deleted": False,
+                "timestamp": {"$gte": cutoff_date}
+            }).sort("timestamp", -1).to_list(length=100)
+            
+            # Extract scores by day
+            daily_scores = {}
+            for journal in journals:
+                date_key = journal["timestamp"].date().isoformat()
+                
+                if date_key not in daily_scores:
+                    daily_scores[date_key] = {
+                        "depression": [],
+                        "anxiety": [],
+                        "stress": [],
+                        "mental_health": []
+                    }
+                
+                llm = journal.get("llm_assessment", {})
+                daily_scores[date_key]["depression"].append(llm.get("depression_score", 0))
+                daily_scores[date_key]["anxiety"].append(llm.get("anxiety_score", 0))
+                daily_scores[date_key]["stress"].append(llm.get("stress_score", 0))
+                daily_scores[date_key]["mental_health"].append(llm.get("mental_health_score", 0))
+            
+            # Calculate daily averages and format for chatbot
+            mental_health_context = []
+            for date_key in sorted(daily_scores.keys(), reverse=True)[:5]:
+                day_data = daily_scores[date_key]
+                mental_health_context.append({
+                    "date": date_key,
+                    "depression": round(sum(day_data["depression"]) / len(day_data["depression"])),
+                    "anxiety": round(sum(day_data["anxiety"]) / len(day_data["anxiety"])),
+                    "stress": round(sum(day_data["stress"]) / len(day_data["stress"])),
+                    "overall": round(sum(day_data["mental_health"]) / len(day_data["mental_health"]))
+                })
+            
+            print(f"[Chat] Adding mental health context: {len(mental_health_context)} days")
+        except Exception as e:
+            print(f"[Chat] Failed to fetch mental health context: {e}")
+            mental_health_context = None
+        
         response = chatbot_service.chat(
             session_id=session_id,
-            user_message=request.message,
+            user_message=message_to_send,
             temperature=request.temperature,
-            max_tokens=request.max_tokens
+            max_tokens=request.max_tokens,
+            mental_health_context=mental_health_context  # Add context
         )
         
         if response['success']:
@@ -889,6 +968,7 @@ async def send_chat_message(request: ChatRequest):
             )
     
     except Exception as e:
+        print(f"Chat error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/chat/history/{session_id}")
@@ -927,18 +1007,18 @@ async def list_chat_sessions():
 
 
 @app.post("/api/analyze-text-journal", response_model=TextJournalResponse)
-async def analyze_text_journal(request: TextJournalRequest):
+async def analyze_text_journal(
+    request: TextJournalRequest,
+    current_user = Depends(get_current_active_user)
+):
     """
-    Analyze text journal entry with privacy options
-    
-    Privacy Modes:
-    - ANONYMIZED: NER removes PII, sends anonymized text to LLM for scoring
-    - FULL_PRIVACY: Only local classifiers (emotion + depression), then LLM scores distributions
+    Analyze text journal entry with privacy options and save to database
     """
     try:
         journal_id = file_manager.generate_task_id()
         
         print(f"\n--- Text Journal Analysis Started ---")
+        print(f"User ID: {current_user.id}")
         print(f"Journal ID: {journal_id}")
         print(f"Privacy Mode: {request.privacy_mode.value}")
         print(f"Text Length: {len(request.text)} characters")
@@ -1028,7 +1108,7 @@ IMPORTANT: Write recommendations in SECOND PERSON (address the person directly a
         
         llm_assessment = json.loads(response.choices[0].message.content)
         
-        # Save complete results
+        # Save complete results to file
         complete_result = {
             "journal_id": journal_id,
             "timestamp": datetime.utcnow().isoformat(),
@@ -1039,20 +1119,34 @@ IMPORTANT: Write recommendations in SECOND PERSON (address the person directly a
             "llm_assessment": llm_assessment
         }
         
-        # Save to results directory
         journal_path = file_manager.results_dir / f"{journal_id}_text_journal.json"
         with open(journal_path, 'w') as f:
             json.dump(complete_result, f, indent=2)
         
+        # Save to MongoDB
+        journal_data = {
+            "user_id": current_user.id,
+            "journal_type": "text",
+            "privacy_mode": request.privacy_mode.value,
+            "content": request.text if request.privacy_mode.value == "anonymized" else None
+        }
+        
+        db_journal_id = await JournalService.create_journal_entry(
+            user_id=current_user.id,
+            journal_data=journal_data,
+            analysis_result=complete_result
+        )
+        
+        print(f"Text journal saved to database with ID: {db_journal_id}")
         print(f"Text journal analysis completed: {journal_id}")
         
         return TextJournalResponse(
             success=True,
             journal_id=journal_id,
             mental_health_score=llm_assessment['mental_health_score'],
-            depression_score=llm_assessment['depression_score'],  # NEW
-            anxiety_score=llm_assessment['anxiety_score'],        # NEW
-            stress_score=llm_assessment['stress_score'],          # NEW
+            depression_score=llm_assessment['depression_score'],
+            anxiety_score=llm_assessment['anxiety_score'],
+            stress_score=llm_assessment['stress_score'],
             risk_level=llm_assessment['risk_level'],
             confidence=llm_assessment['confidence'],
             dominant_emotion=emotion_result['dominant_emotion'],
@@ -1062,7 +1156,8 @@ IMPORTANT: Write recommendations in SECOND PERSON (address the person directly a
             analysis_summary={
                 "emotion_scores": emotion_result['emotion_scores'],
                 "depression_severity": depression_result['severity'],
-                "privacy_mode": request.privacy_mode.value
+                "privacy_mode": request.privacy_mode.value,
+                "db_journal_id": db_journal_id
             }
         )
         
@@ -1071,6 +1166,341 @@ IMPORTANT: Write recommendations in SECOND PERSON (address the person directly a
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+
+# Authentication routes
+@app.post("/api/auth/register", response_model=Token)
+async def register(user: UserCreate):
+    """Register a new user"""
+    try:
+        users_collection = await get_users_collection()
+        
+        # Check if user already exists
+        existing_user = await users_collection.find_one({"email": user.email})
+        if existing_user:
+            raise HTTPException(
+                status_code=400,
+                detail="Email already registered"
+            )
+        
+        # Validate password length
+        if len(user.password) > 72:
+            raise HTTPException(
+                status_code=400,
+                detail="Password cannot be longer than 72 characters"
+            )
+        
+        if len(user.password) < 8:
+            raise HTTPException(
+                status_code=400,
+                detail="Password must be at least 8 characters"
+            )
+        
+        # Create user document
+        try:
+            hashed_password = get_password_hash(user.password)
+        except Exception as e:
+            print(f"Password hashing error: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to process password"
+            )
+        
+        user_dict = {
+            "email": user.email,
+            "full_name": user.full_name,
+            "hashed_password": hashed_password,
+            "date_created": datetime.utcnow(),
+            "is_active": True
+        }
+        
+        result = await users_collection.insert_one(user_dict)
+        user_dict["_id"] = str(result.inserted_id)
+        
+        # Create access token
+        access_token = create_access_token(data={"sub": user.email})
+        
+        # Prepare user response
+        user_response = UserResponse(
+            id=user_dict["_id"],
+            email=user_dict["email"],
+            full_name=user_dict["full_name"],
+            date_created=user_dict["date_created"],
+            is_active=user_dict["is_active"]
+        )
+        
+        return Token(
+            access_token=access_token,
+            user=user_response
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Registration error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/auth/login", response_model=Token)
+async def login(user_credentials: UserLogin):
+    """Login user"""
+    try:
+        users_collection = await get_users_collection()
+        
+        # Find user by email
+        user = await users_collection.find_one({"email": user_credentials.email})
+        
+        if not user or not verify_password(user_credentials.password, user["hashed_password"]):
+            raise HTTPException(
+                status_code=401,
+                detail="Incorrect email or password"
+            )
+        
+        if not user.get("is_active", True):
+            raise HTTPException(status_code=400, detail="Inactive user")
+        
+        # Create access token
+        access_token = create_access_token(data={"sub": user["email"]})
+        
+        # Prepare user response
+        user_response = UserResponse(
+            id=str(user["_id"]),
+            email=user["email"],
+            full_name=user["full_name"],
+            date_created=user["date_created"],
+            is_active=user.get("is_active", True)
+        )
+        
+        return Token(
+            access_token=access_token,
+            user=user_response
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/auth/me", response_model=UserResponse)
+async def get_current_user_info(current_user = Depends(get_current_active_user)):
+    """Get current user information"""
+    return UserResponse(
+        id=current_user.id,
+        email=current_user.email,
+        full_name=current_user.full_name,
+        date_created=current_user.date_created,
+        is_active=current_user.is_active
+    )
+
+
+@app.get("/api/journals/my-journals")
+async def get_my_journals(
+    limit: int = 50,
+    journal_type: Optional[str] = None,
+    current_user = Depends(get_current_active_user)
+):
+    """Get current user's journal entries"""
+    try:
+        journals_collection = await JournalService.get_journals_collection()
+        
+        query = {
+            "user_id": current_user.id,
+            "is_deleted": False
+        }
+        
+        if journal_type:
+            query["journal_type"] = journal_type
+        
+        journals = await journals_collection.find(query).sort("timestamp", -1).limit(limit).to_list(length=limit)
+        
+        # Convert ObjectId and datetime to string
+        for journal in journals:
+            journal["_id"] = str(journal["_id"])
+            # Handle date field (could be datetime or date)
+            if "date" in journal:
+                if isinstance(journal["date"], datetime):
+                    journal["date"] = journal["date"].date().isoformat()
+                else:
+                    journal["date"] = journal["date"].isoformat() if hasattr(journal["date"], "isoformat") else str(journal["date"])
+            
+            if "timestamp" in journal:
+                journal["timestamp"] = journal["timestamp"].isoformat() if hasattr(journal["timestamp"], "isoformat") else str(journal["timestamp"])
+        
+        return {
+            "success": True,
+            "count": len(journals),
+            "journals": journals
+        }
+        
+    except Exception as e:
+        print(f"Error fetching journals: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/journals/heatmap/{year}")
+async def get_journal_heatmap(
+    year: int,
+    current_user = Depends(get_current_active_user)
+):
+    """Get heatmap data for journal entries (like GitHub contributions)"""
+    try:
+        heatmap_data = await JournalService.get_heatmap_data(
+            user_id=current_user.id,
+            year=year
+        )
+        
+        # Convert dates to strings
+        heatmap_dict = {
+            "user_id": heatmap_data.user_id,
+            "year": heatmap_data.year,
+            "current_streak": heatmap_data.current_streak,
+            "longest_streak": heatmap_data.longest_streak,
+            "total_entries": heatmap_data.total_entries,
+            "data": [
+                {
+                    "date": point.date.isoformat(),
+                    "value": point.value,
+                    "mental_health_score": point.mental_health_score,
+                    "total_entries": point.total_entries,
+                    "tooltip": point.tooltip
+                }
+                for point in heatmap_data.data
+            ]
+        }
+        
+        return heatmap_dict
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/journals/stats")
+async def get_journal_stats(
+    current_user = Depends(get_current_active_user)
+):
+    """Get journal statistics for current user"""
+    try:
+        journals_collection = await JournalService.get_journals_collection()
+        streaks_collection = await JournalService.get_streaks_collection()
+        
+        # Get total counts
+        total_entries = await journals_collection.count_documents({
+            "user_id": current_user.id,
+            "is_deleted": False
+        })
+        
+        text_entries = await journals_collection.count_documents({
+            "user_id": current_user.id,
+            "journal_type": "text",
+            "is_deleted": False
+        })
+        
+        video_entries = await journals_collection.count_documents({
+            "user_id": current_user.id,
+            "journal_type": "video",
+            "is_deleted": False
+        })
+        
+        # Get streak info
+        streak_doc = await streaks_collection.find_one({"user_id": current_user.id})
+        
+        current_streak = streak_doc["current_streak"] if streak_doc else 0
+        longest_streak = streak_doc["longest_streak"] if streak_doc else 0
+        
+        # Handle last_entry_date - could be datetime or date
+        last_entry_date = None
+        if streak_doc and streak_doc.get("last_entry_date"):
+            led = streak_doc["last_entry_date"]
+            if isinstance(led, datetime):
+                last_entry_date = led.date().isoformat()
+            else:
+                last_entry_date = led.isoformat() if hasattr(led, "isoformat") else None
+        
+        return {
+            "success": True,
+            "stats": {
+                "total_entries": total_entries,
+                "text_entries": text_entries,
+                "video_entries": video_entries,
+                "current_streak": current_streak,
+                "longest_streak": longest_streak,
+                "last_entry_date": last_entry_date
+            }
+        }
+        
+    except Exception as e:
+        print(f"Error fetching journal stats: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/journals/recent-scores")
+async def get_recent_scores(
+    days: int = 5,
+    current_user = Depends(get_current_active_user)
+):
+    """Get recent mental health scores for chatbot context"""
+    try:
+        journals_collection = await JournalService.get_journals_collection()
+        
+        # Get journals from last N days
+        from datetime import timedelta
+        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        
+        journals = await journals_collection.find({
+            "user_id": current_user.id,
+            "is_deleted": False,
+            "timestamp": {"$gte": cutoff_date}
+        }).sort("timestamp", -1).to_list(length=100)
+        
+        # Extract scores by day
+        daily_scores = {}
+        for journal in journals:
+            date_key = journal["timestamp"].date().isoformat()
+            
+            if date_key not in daily_scores:
+                daily_scores[date_key] = {
+                    "date": date_key,
+                    "depression_scores": [],
+                    "anxiety_scores": [],
+                    "stress_scores": [],
+                    "mental_health_scores": []
+                }
+            
+            llm = journal.get("llm_assessment", {})
+            daily_scores[date_key]["depression_scores"].append(llm.get("depression_score", 0))
+            daily_scores[date_key]["anxiety_scores"].append(llm.get("anxiety_score", 0))
+            daily_scores[date_key]["stress_scores"].append(llm.get("stress_score", 0))
+            daily_scores[date_key]["mental_health_scores"].append(llm.get("mental_health_score", 0))
+        
+        # Calculate daily averages
+        summary = []
+        for date_key in sorted(daily_scores.keys(), reverse=True):
+            day_data = daily_scores[date_key]
+            summary.append({
+                "date": day_data["date"],
+                "avg_depression": round(sum(day_data["depression_scores"]) / len(day_data["depression_scores"])),
+                "avg_anxiety": round(sum(day_data["anxiety_scores"]) / len(day_data["anxiety_scores"])),
+                "avg_stress": round(sum(day_data["stress_scores"]) / len(day_data["stress_scores"])),
+                "avg_mental_health": round(sum(day_data["mental_health_scores"]) / len(day_data["mental_health_scores"])),
+                "entries_count": len(day_data["depression_scores"])
+            })
+        
+        return {
+            "success": True,
+            "days": days,
+            "data": summary[:days]  # Return only requested number of days
+        }
+        
+    except Exception as e:
+        print(f"Error fetching recent scores: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

@@ -118,5 +118,13 @@ win_inet_pton==1.1.0
 wrapt==1.17.3
 zipp==3.23.0
 zstandard==0.23.0
-en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.0/en_core_web_sm-3.7.0-py3-none-any.whl
 grad-cam>=1.4.8
+
+
+
+motor
+pymongo
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt>=4.0.0
+pydantic[email]

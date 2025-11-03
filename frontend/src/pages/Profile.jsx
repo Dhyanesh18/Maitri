@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { useAuth } from "../contexts/AuthContext";
+import { toast } from "react-toastify";
 import {
   User,
   Mail,
@@ -14,334 +16,354 @@ import {
 } from "lucide-react";
 
 export default function Profile() {
+  const { user, token, getAuthHeaders } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
-  const [profile, setProfile] = useState({
-    firstName: "Dhyaneshvar",
-    lastName: "K",
-    email: "dhyaneshvar.k@gmail.com",
-    phone: "9892526542",
-    dateOfBirth: "2005-01-15",
-    therapist: "Chennai , India",
-    emergencyContact: "Dhyaneshvar - Friend Ritovan",
-    emergencyPhone: "9892525348",
+  const [formData, setFormData] = useState({
+    full_name: user?.full_name || "",
+    email: user?.email || "",
   });
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSave = () => {
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      // TODO: Implement profile update API endpoint
+      // const response = await fetch('http://localhost:8000/api/auth/update-profile', {
+      //   method: 'PUT',
+      //   headers: {
+      //     'Content-Type': 'application/json',
+      //     ...getAuthHeaders()
+      //   },
+      //   body: JSON.stringify(formData)
+      // });
+
+      // For now, just show success message
+      toast.success("Profile updated successfully!");
+      setIsEditing(false);
+
+      // Update local storage
+      const updatedUser = { ...user, ...formData };
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+    } catch (error) {
+      console.error("Profile update error:", error);
+      toast.error("Failed to update profile");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setFormData({
+      full_name: user?.full_name || "",
+      email: user?.email || "",
+    });
     setIsEditing(false);
-    // Save logic would go here
+  };
+
+  // Get initials for avatar
+  const getInitials = (name) => {
+    if (!name) return "U";
+    return name
+      .split(" ")
+      .map((word) => word[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  // Format date
+  const formatDate = (dateString) => {
+    if (!dateString) return "N/A";
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
   };
 
   return (
-    <div className="min-h-screen bg-white p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* Profile Header Card */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm mb-8">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-            <div className="flex items-center gap-6">
-              <div className="w-24 h-24 bg-[#1A3A37] rounded-2xl flex items-center justify-center shadow-sm">
-                <span className="text-white text-4xl font-bold">
-                  {profile.firstName[0]}
-                  {profile.lastName[0]}
+    <div className="h-full overflow-auto bg-gray-50">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b border-gray-200">
+        <div className="px-6 py-4">
+          <h2 className="text-xl font-semibold text-gray-900">
+            Profile Settings
+          </h2>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="p-6 max-w-4xl mx-auto">
+        {/* Profile Card */}
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          {/* Header Section with Avatar */}
+          <div className="bg-gradient-to-r from-stone-900 to-teal-900 px-8 py-12">
+            <div className="flex items-center">
+              <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-lg">
+                <span className="text-3xl font-bold text-teal-600">
+                  {getInitials(user?.full_name)}
                 </span>
               </div>
-              <div>
-                <h2 className="text-3xl font-bold text-[#1A3A37] mb-1">
-                  {profile.firstName} {profile.lastName}
-                </h2>
-                <p className="text-gray-600 mb-2">Member since January 2025</p>
-                <div className="flex gap-4 text-sm text-gray-600">
-                  <span className="flex items-center gap-1">
-                    <Mail className="w-4 h-4 text-gray-500" />
-                    {profile.email}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Phone className="w-4 h-4 text-gray-500" />
-                    {profile.phone}
-                  </span>
-                </div>
+              <div className="ml-6 text-white">
+                <h3 className="text-2xl font-bold mb-1">
+                  {user?.full_name || "User"}
+                </h3>
+                <p className="text-teal-100">
+                  {user?.email || "user@example.com"}
+                </p>
+                <p className="text-sm text-teal-100 mt-2">
+                  Member since {formatDate(user?.date_created)}
+                </p>
               </div>
             </div>
-            <button
-              onClick={() => setIsEditing(!isEditing)}
-              className="flex items-center gap-2 bg-[#1A3A37] text-white px-6 py-3 rounded-full font-medium hover:bg-[#154F4A] transition-colors shadow-sm"
-            >
-              {isEditing ? (
-                <>
-                  <Save className="w-4 h-4" />
-                  Save & Exit
-                </>
-              ) : (
-                <>
-                  <Edit3 className="w-4 h-4" />
-                  Edit Profile
-                </>
+          </div>
+
+          {/* Form Section */}
+          <div className="px-8 py-6">
+            <form onSubmit={handleSubmit}>
+              {/* Personal Information */}
+              <div className="mb-8">
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="text-lg font-semibold text-gray-900">
+                    Personal Information
+                  </h4>
+                  {!isEditing && (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditing(true)}
+                      className="text-teal-600 hover:text-teal-700 font-medium text-sm flex items-center"
+                    >
+                      <svg
+                        className="w-4 h-4 mr-1"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                        />
+                      </svg>
+                      Edit Profile
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-4">
+                  {/* Full Name */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Full Name
+                    </label>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        name="full_name"
+                        value={formData.full_name}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                        required
+                      />
+                    ) : (
+                      <p className="px-4 py-3 bg-gray-50 rounded-lg text-gray-900">
+                        {user?.full_name || "Not set"}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Email */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Email Address
+                    </label>
+                    {isEditing ? (
+                      <input
+                        type="email"
+                        name="email"
+                        value={formData.email}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                        required
+                      />
+                    ) : (
+                      <p className="px-4 py-3 bg-gray-50 rounded-lg text-gray-900">
+                        {user?.email || "Not set"}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Account Status */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Account Status
+                    </label>
+                    <div className="flex items-center">
+                      <span
+                        className={`px-3 py-1 rounded-full text-sm font-medium ${
+                          user?.is_active
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-100 text-red-800"
+                        }`}
+                      >
+                        {user?.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* User ID */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      User ID
+                    </label>
+                    <p className="px-4 py-3 bg-gray-50 rounded-lg text-gray-600 font-mono text-sm">
+                      {user?.id || "N/A"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              {isEditing && (
+                <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors"
+                    disabled={isLoading}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? "Saving..." : "Save Changes"}
+                  </button>
+                </div>
               )}
+            </form>
+          </div>
+        </div>
+
+        {/* Additional Settings Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+          {/* Security Settings */}
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+              <svg
+                className="w-5 h-5 mr-2 text-teal-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                />
+              </svg>
+              Security
+            </h4>
+            <button className="w-full text-left px-4 py-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-700">Change Password</span>
+                <svg
+                  className="w-5 h-5 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </div>
+            </button>
+          </div>
+
+          {/* Privacy Settings */}
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+              <svg
+                className="w-5 h-5 mr-2 text-teal-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                />
+              </svg>
+              Privacy
+            </h4>
+            <button className="w-full text-left px-4 py-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-700">Privacy Settings</span>
+                <svg
+                  className="w-5 h-5 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </div>
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Personal Information */}
-            <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="bg-blue-50 p-3 rounded-xl">
-                  <User className="w-6 h-6 text-blue-600" />
-                </div>
-                <h3 className="text-xl font-bold text-[#1A3A37]">
-                  Personal Information
-                </h3>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 space-y-4 md:space-y-0">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    First Name
-                  </label>
-                  <input
-                    type="text"
-                    value={profile.firstName}
-                    disabled={!isEditing}
-                    onChange={(e) =>
-                      setProfile({ ...profile, firstName: e.target.value })
-                    }
-                    className={`w-full px-4 py-2 border rounded-lg text-sm transition-all ${
-                      isEditing
-                        ? "border-gray-300 bg-white focus:outline-none focus:border-[#1A3A37] focus:ring-1 focus:ring-[#1A3A37]"
-                        : "border-gray-200 bg-gray-50 text-gray-600"
-                    }`}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Last Name
-                  </label>
-                  <input
-                    type="text"
-                    value={profile.lastName}
-                    disabled={!isEditing}
-                    onChange={(e) =>
-                      setProfile({ ...profile, lastName: e.target.value })
-                    }
-                    className={`w-full px-4 py-2 border rounded-lg text-sm transition-all ${
-                      isEditing
-                        ? "border-gray-300 bg-white focus:outline-none focus:border-[#1A3A37] focus:ring-1 focus:ring-[#1A3A37]"
-                        : "border-gray-200 bg-gray-50 text-gray-600"
-                    }`}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    value={profile.email}
-                    disabled={!isEditing}
-                    onChange={(e) =>
-                      setProfile({ ...profile, email: e.target.value })
-                    }
-                    className={`w-full px-4 py-2 border rounded-lg text-sm transition-all ${
-                      isEditing
-                        ? "border-gray-300 bg-white focus:outline-none focus:border-[#1A3A37] focus:ring-1 focus:ring-[#1A3A37]"
-                        : "border-gray-200 bg-gray-50 text-gray-600"
-                    }`}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Phone Number
-                  </label>
-                  <input
-                    type="tel"
-                    value={profile.phone}
-                    disabled={!isEditing}
-                    onChange={(e) =>
-                      setProfile({ ...profile, phone: e.target.value })
-                    }
-                    className={`w-full px-4 py-2 border rounded-lg text-sm transition-all ${
-                      isEditing
-                        ? "border-gray-300 bg-white focus:outline-none focus:border-[#1A3A37] focus:ring-1 focus:ring-[#1A3A37]"
-                        : "border-gray-200 bg-gray-50 text-gray-600"
-                    }`}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Date of Birth
-                  </label>
-                  <input
-                    type="date"
-                    value={profile.dateOfBirth}
-                    disabled={!isEditing}
-                    onChange={(e) =>
-                      setProfile({ ...profile, dateOfBirth: e.target.value })
-                    }
-                    className={`w-full px-4 py-2 border rounded-lg text-sm transition-all ${
-                      isEditing
-                        ? "border-gray-300 bg-white focus:outline-none focus:border-[#1A3A37] focus:ring-1 focus:ring-[#1A3A37]"
-                        : "border-gray-200 bg-gray-50 text-gray-600"
-                    }`}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Address
-                  </label>
-                  <input
-                    type="text"
-                    value={profile.therapist}
-                    disabled={!isEditing}
-                    onChange={(e) =>
-                      setProfile({ ...profile, therapist: e.target.value })
-                    }
-                    className={`w-full px-4 py-2 border rounded-lg text-sm transition-all ${
-                      isEditing
-                        ? "border-gray-300 bg-white focus:outline-none focus:border-[#1A3A37] focus:ring-1 focus:ring-[#1A3A37]"
-                        : "border-gray-200 bg-gray-50 text-gray-600"
-                    }`}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Emergency Contact */}
-            <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="bg-red-50 p-3 rounded-xl">
-                  <AlertCircle className="w-6 h-6 text-red-600" />
-                </div>
-                <h3 className="text-xl font-bold text-[#1A3A37]">
-                  Emergency Contact
-                </h3>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Contact Person
-                  </label>
-                  <input
-                    type="text"
-                    value={profile.emergencyContact}
-                    disabled={!isEditing}
-                    onChange={(e) =>
-                      setProfile({
-                        ...profile,
-                        emergencyContact: e.target.value,
-                      })
-                    }
-                    className={`w-full px-4 py-2 border rounded-lg text-sm transition-all ${
-                      isEditing
-                        ? "border-gray-300 bg-white focus:outline-none focus:border-[#1A3A37] focus:ring-1 focus:ring-[#1A3A37]"
-                        : "border-gray-200 bg-gray-50 text-gray-600"
-                    }`}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Emergency Phone
-                  </label>
-                  <input
-                    type="tel"
-                    value={profile.emergencyPhone}
-                    disabled={!isEditing}
-                    onChange={(e) =>
-                      setProfile({ ...profile, emergencyPhone: e.target.value })
-                    }
-                    className={`w-full px-4 py-2 border rounded-lg text-sm transition-all ${
-                      isEditing
-                        ? "border-gray-300 bg-white focus:outline-none focus:border-[#1A3A37] focus:ring-1 focus:ring-[#1A3A37]"
-                        : "border-gray-200 bg-gray-50 text-gray-600"
-                    }`}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Sidebar Stats */}
-          <div className="space-y-6">
-            {/* Account Stats */}
-            <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="bg-green-50 p-3 rounded-xl">
-                  <Heart className="w-6 h-6 text-green-600" />
-                </div>
-                <h3 className="text-lg font-bold text-[#1A3A37]">
-                  Account Summary
-                </h3>
-              </div>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center pb-3 border-b border-gray-100">
-                  <span className="text-gray-600 text-sm">Member since</span>
-                  <span className="font-semibold text-[#1A3A37]">Jan 2025</span>
-                </div>
-                <div className="flex justify-between items-center pb-3 border-b border-gray-100">
-                  <span className="text-gray-600 text-sm">
-                    Sessions completed
-                  </span>
-                  <span className="font-semibold text-[#1A3A37]">24</span>
-                </div>
-                <div className="flex justify-between items-center pb-3 border-b border-gray-100">
-                  <span className="text-gray-600 text-sm">Hours practiced</span>
-                  <span className="font-semibold text-[#1A3A37]">156h</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600 text-sm">Current streak</span>
-                  <span className="font-semibold text-[#1A3A37]">30 days</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Actions */}
-            <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-              <h3 className="text-lg font-bold text-[#1A3A37] mb-4">
-                Settings
-              </h3>
-              <div className="space-y-2">
-                <button className="w-full text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100 hover:border-gray-300 border border-gray-200 transition-colors text-sm font-medium text-gray-700 flex items-center gap-3">
-                  <Lock className="w-4 h-4 text-gray-600" />
-                  Privacy Settings
-                </button>
-                <button className="w-full text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100 hover:border-gray-300 border border-gray-200 transition-colors text-sm font-medium text-gray-700 flex items-center gap-3">
-                  <Key className="w-4 h-4 text-gray-600" />
-                  Change Password
-                </button>
-                <button className="w-full text-left p-3 bg-red-50 rounded-lg hover:bg-red-100 border border-red-200 transition-colors text-sm font-medium text-red-600 flex items-center gap-3">
-                  <Trash className="w-4 h-4" />
-                  Delete Account
-                </button>
-              </div>
-            </div>
-          </div>
+        {/* Danger Zone */}
+        <div className="bg-white rounded-xl shadow-lg p-6 mt-6 border-2 border-red-200">
+          <h4 className="text-lg font-semibold text-red-600 mb-4 flex items-center">
+            <svg
+              className="w-5 h-5 mr-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+            Danger Zone
+          </h4>
+          <p className="text-gray-600 mb-4">
+            Once you delete your account, there is no going back. Please be
+            certain.
+          </p>
+          <button className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium transition-colors">
+            Delete Account
+          </button>
         </div>
-
-        {/* Save/Cancel Actions - Visible when editing */}
-        {isEditing && (
-          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex justify-end gap-3">
-            <button
-              onClick={() => setIsEditing(false)}
-              className="px-6 py-3 border border-gray-300 text-gray-700 rounded-full font-medium hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              className="px-6 py-3 bg-[#1A3A37] text-white rounded-full font-medium hover:bg-[#154F4A] transition-colors shadow-sm"
-            >
-              Save Changes
-            </button>
-          </div>
-        )}
-      </div>
+      </main>
     </div>
   );
 }

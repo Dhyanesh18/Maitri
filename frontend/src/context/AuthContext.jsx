@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 
 const AuthContext = createContext(null);
@@ -45,9 +46,11 @@ export const AuthProvider = ({ children }) => {
       setToken(data.access_token);
       setUser(data.user);
 
+      toast.success("Welcome back!");
       return { success: true };
     } catch (error) {
       console.error("Login error:", error);
+      toast.error(error.message || "Login failed");
       return { success: false, error: error.message };
     }
   };
@@ -79,9 +82,11 @@ export const AuthProvider = ({ children }) => {
       setToken(data.access_token);
       setUser(data.user);
 
+      toast.success("Account created successfully!");
       return { success: true };
     } catch (error) {
       console.error("Registration error:", error);
+      toast.error(error.message || "Registration failed");
       return { success: false, error: error.message };
     }
   };
@@ -92,8 +97,6 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
     setUser(null);
     toast.info("Logged out successfully");
-    // Redirect to home page
-    window.location.href = "/home";
   };
 
   const getAuthHeaders = () => {
