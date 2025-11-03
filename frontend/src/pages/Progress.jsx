@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { toast } from "react-toastify";
 import {
   Edit3,
@@ -49,6 +49,23 @@ export default function Progress() {
     last_entry_date: null,
   });
 
+  const fetchJournalStats = useCallback(async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/journals/stats", {
+        headers: {
+          ...getAuthHeaders(),
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setJournalStats(data.stats);
+      }
+    } catch (error) {
+      console.error("Failed to fetch journal stats:", error);
+    }
+  }, [getAuthHeaders]);
+
   const startVideoRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -84,7 +101,7 @@ export default function Progress() {
         }
       };
 
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         const blob = new Blob(chunks, { type: "video/webm" });
         const videoUrl = URL.createObjectURL(blob);
         setRecordedVideoUrl(videoUrl);
@@ -93,6 +110,7 @@ export default function Progress() {
           new Date().toISOString().split("T")[0]
         }-${Date.now()}.webm`;
 
+        // Download the video locally
         const link = document.createElement("a");
         link.href = videoUrl;
         link.download = fileName;
@@ -111,7 +129,7 @@ export default function Progress() {
           },
         ]);
 
-        // Show success toast
+        // Show initial success toast
         toast.success("Video journal recorded and downloaded successfully!", {
           position: "top-right",
           autoClose: 3000,
@@ -120,17 +138,93 @@ export default function Progress() {
           pauseOnHover: true,
         });
 
+        // Clean up stream and close dialog
         pendingStream.getTracks().forEach((t) => t.stop());
         if (videoRef.current) videoRef.current.srcObject = null;
         setShowVideoDialog(false);
         setPendingStream(null);
+
+        // Now upload the recorded video to the API for analysis
+        try {
+          setIsAnalyzing(true);
+          setAnalysisProgress("Uploading video...");
+
+          // Create a File object from the blob
+          const file = new File([blob], fileName, { type: "video/webm" });
+
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("privacy_mode", privacyMode);
+          formData.append("interval_seconds", 5);
+          formData.append("frame_skip", 2);
+
+          // Simulate progress updates
+          const progressInterval = setInterval(() => {
+            setAnalysisProgress((prev) => {
+              const stages = [
+                "Uploading video...",
+                "Processing video frames...",
+                "Analyzing facial expressions...",
+                "Extracting audio...",
+                "Transcribing speech...",
+                "Analyzing audio emotions...",
+                "Processing text sentiment...",
+                "Generating AI assessment...",
+                "Finalizing results...",
+              ];
+              const currentIndex = stages.indexOf(prev);
+              if (currentIndex < stages.length - 1) {
+                return stages[currentIndex + 1];
+              }
+              return prev;
+            });
+          }, 8000);
+
+          const response = await fetch("http://localhost:8000/api/upload-video", {
+            method: "POST",
+            headers: {
+              ...getAuthHeaders(),
+            },
+            body: formData,
+          });
+
+          clearInterval(progressInterval);
+
+          if (!response.ok) {
+            throw new Error(`Analysis failed: ${response.statusText}`);
+          }
+
+          const result = await response.json();
+
+          toast.success("Analysis completed and saved!", {
+            position: "top-right",
+            autoClose: 5000,
+          });
+
+          console.log("Complete Analysis Result:", result);
+          displayAnalysisResults(result);
+
+          // Refresh stats
+          await fetchJournalStats();
+
+          setIsAnalyzing(false);
+          setAnalysisProgress("");
+        } catch (error) {
+          console.error("Upload failed:", error);
+          toast.error("Upload or analysis failed. Please try again.", {
+            position: "top-right",
+            autoClose: 5000,
+          });
+          setIsAnalyzing(false);
+          setAnalysisProgress("");
+        }
       };
 
       recorder.start();
       setMediaRecorder(recorder);
       setIsRecording(true);
     }
-  }, [showVideoDialog, pendingStream]);
+  }, [showVideoDialog, pendingStream, privacyMode, getAuthHeaders, fetchJournalStats]);
 
   const stopVideoRecording = () => {
     if (mediaRecorder && isRecording) {
@@ -150,24 +244,7 @@ export default function Progress() {
   // Fetch journal stats on component mount
   useEffect(() => {
     fetchJournalStats();
-  }, []);
-
-  const fetchJournalStats = async () => {
-    try {
-      const response = await fetch("http://localhost:8000/api/journals/stats", {
-        headers: {
-          ...getAuthHeaders(),
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setJournalStats(data.stats);
-      }
-    } catch (error) {
-      console.error("Failed to fetch journal stats:", error);
-    }
-  };
+  }, [fetchJournalStats]);
 
   const saveJournalEntry = async () => {
     if (journalText.trim()) {

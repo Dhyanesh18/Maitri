@@ -259,53 +259,86 @@ class JournalService:
         user_id: str,
         year: int
     ) -> HeatmapResponse:
-        """Get heatmap data for a year (like GitHub contributions)"""
-        summaries = await JournalService.get_daily_summaries_collection()
+        """Get heatmap data for a year (like GitHub contributions) - reading directly from journal_entries"""
+        journals = await JournalService.get_journals_collection()
         streaks = await JournalService.get_streaks_collection()
         
-        # Get all summaries for the year
+        # Get all journal entries for the year directly from journal_entries collection
         start_date = datetime(year, 1, 1)
         end_date = datetime(year, 12, 31, 23, 59, 59)
         
-        summaries_cursor = summaries.find({
+        entries_cursor = journals.find({
             "user_id": user_id,
-            "date": {"$gte": start_date, "$lte": end_date}
+            "date": {"$gte": start_date, "$lte": end_date},
+            "is_deleted": False
         })
         
-        summaries_list = await summaries_cursor.to_list(length=366)
+        entries_list = await entries_cursor.to_list(length=1000)
         
-        # Create heatmap data
+        # Group entries by date and calculate daily stats
+        daily_stats = {}
+        for entry in entries_list:
+            entry_date = entry["date"].date() if isinstance(entry["date"], datetime) else entry["date"]
+            date_str = str(entry_date)
+            
+            if date_str not in daily_stats:
+                daily_stats[date_str] = {
+                    "count": 0,
+                    "mental_health_scores": [],
+                    "emotions": []
+                }
+            
+            daily_stats[date_str]["count"] += 1
+            
+            # Extract mental health score
+            llm = entry.get("llm_assessment", {})
+            mh_score = llm.get("mental_health_score") or llm.get("overall_mental_health_score", 50)
+            daily_stats[date_str]["mental_health_scores"].append(mh_score)
+            
+            # Extract emotion
+            emotion = entry.get("emotion_analysis", {}).get("dominant_emotion", "neutral")
+            daily_stats[date_str]["emotions"].append(emotion)
+        
+        # Create heatmap data for every day of the year
         heatmap_data = []
         current_date = start_date.date()
         end = end_date.date()
         
         while current_date <= end:
-            # Find summary for this date
-            current_datetime = datetime.combine(current_date, datetime.min.time())
-            day_summary = next(
-                (s for s in summaries_list if s["date"].date() == current_date),
-                None
-            )
+            date_str = str(current_date)
             
-            if day_summary:
-                # Calculate intensity (0-4 scale like GitHub)
-                score = day_summary["avg_mental_health_score"]
-                if score >= 80:
-                    intensity = 4
-                elif score >= 60:
-                    intensity = 3
-                elif score >= 40:
-                    intensity = 2
-                else:
-                    intensity = 1
+            if date_str in daily_stats:
+                stats = daily_stats[date_str]
+                entry_count = stats["count"]
                 
-                tooltip = f"{day_summary['total_entries']} entries • Score: {score:.0f} • {day_summary['dominant_emotion']}"
+                # Calculate intensity based on number of entries (0-4 scale like GitHub)
+                if entry_count >= 5:
+                    intensity = 4  # 5+ entries = darkest green
+                elif entry_count >= 4:
+                    intensity = 3  # 4 entries = dark green
+                elif entry_count >= 3:
+                    intensity = 2  # 3 entries = medium green
+                elif entry_count >= 2:
+                    intensity = 1  # 2 entries = light green
+                else:
+                    intensity = 1  # 1 entry = light green
+                
+                # Calculate average mental health score
+                avg_score = sum(stats["mental_health_scores"]) / len(stats["mental_health_scores"])
+                
+                # Find most common emotion
+                emotion_counts = {}
+                for emotion in stats["emotions"]:
+                    emotion_counts[emotion] = emotion_counts.get(emotion, 0) + 1
+                dominant_emotion = max(emotion_counts, key=emotion_counts.get)
+                
+                tooltip = f"{entry_count} entries • Score: {avg_score:.0f} • {dominant_emotion}"
                 
                 heatmap_data.append(HeatmapDataPoint(
                     date=current_date,
                     value=intensity,
-                    mental_health_score=int(score),
-                    total_entries=day_summary["total_entries"],
+                    mental_health_score=int(avg_score),
+                    total_entries=entry_count,
                     tooltip=tooltip
                 ))
             else:
@@ -322,7 +355,7 @@ class JournalService:
         streak_doc = await streaks.find_one({"user_id": user_id})
         current_streak = streak_doc["current_streak"] if streak_doc else 0
         longest_streak = streak_doc["longest_streak"] if streak_doc else 0
-        total_entries = streak_doc["total_entries"] if streak_doc else 0
+        total_entries = len(entries_list)
         
         return HeatmapResponse(
             user_id=user_id,

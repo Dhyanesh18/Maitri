@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import {
@@ -21,7 +21,7 @@ import { useAuth } from "../contexts/AuthContext";
 
 export default function DashboardHome() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, getAuthHeaders } = useAuth();
   const [quizTaken, setQuizTaken] = useState(false);
   const [showQuizDialog, setShowQuizDialog] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState(0);
@@ -34,6 +34,8 @@ export default function DashboardHome() {
   const [showQuiz, setShowQuiz] = useState(false);
   const [quizCompleted, setQuizCompleted] = useState(false);
   const [quizResults, setQuizResults] = useState(null);
+  const [heatmapData, setHeatmapData] = useState(null);
+  const [loadingHeatmap, setLoadingHeatmap] = useState(true);
 
   const quizQuestions = [
     {
@@ -122,18 +124,75 @@ export default function DashboardHome() {
     },
   ];
 
-  // --- Generate Activity Data ---
-  const generateActivityData = () => {
+  // --- Transform Heatmap Data to Activity Grid ---
+  const activityData = useMemo(() => {
+    if (!heatmapData || !heatmapData.data) {
+      console.log("No heatmap data available yet");
+      // Return empty data while loading
+      const WEEKS = 52;
+      const DAYS = 7;
+      return Array.from({ length: WEEKS }, () =>
+        Array.from({ length: DAYS }, () => 0)
+      );
+    }
+
+    console.log("Processing heatmap data for activity grid...");
+    console.log("Total data points received:", heatmapData.data.length);
+
+    // Group heatmap data by week (GitHub style: columns = weeks, rows = days of week)
     const WEEKS = 52;
     const DAYS = 7;
-    return Array.from({ length: WEEKS }, (_, weekIndex) =>
-      Array.from({ length: DAYS }, () => {
-        // Show activity (green) only for last 6-7 weeks, rest white
-        return weekIndex >= WEEKS - 7 ? Math.floor(Math.random() * 5) + 1 : 0;
-      })
+    const weeks = Array.from({ length: WEEKS }, () =>
+      Array.from({ length: DAYS }, () => 0)
     );
-  };
-  const activityData = useMemo(generateActivityData, []);
+
+    // Get current year start
+    const currentYear = new Date().getFullYear();
+    const startOfYear = new Date(currentYear, 0, 1);
+    
+    // Log the start of year for debugging
+    console.log("Start of year:", startOfYear.toISOString());
+    
+    // Create a map for quick lookup
+    const dataMap = new Map();
+    let nonZeroCount = 0;
+    heatmapData.data.forEach((point) => {
+      dataMap.set(point.date, point.value);
+      if (point.value > 0) {
+        nonZeroCount++;
+        console.log(`Data point with activity: ${point.date} -> value: ${point.value}, entries: ${point.total_entries}`);
+      }
+    });
+    
+    console.log(`Total entries in dataMap: ${dataMap.size}`);
+    console.log(`Non-zero entries: ${nonZeroCount}`);
+    
+    // Fill the grid chronologically
+    let filledCells = 0;
+    for (let weekIndex = 0; weekIndex < WEEKS; weekIndex++) {
+      for (let dayIndex = 0; dayIndex < DAYS; dayIndex++) {
+        // Calculate the actual date for this cell
+        const cellDate = new Date(startOfYear);
+        cellDate.setDate(startOfYear.getDate() + (weekIndex * 7 + dayIndex));
+        
+        // Only process if the date is in current year
+        if (cellDate.getFullYear() === currentYear) {
+          const dateStr = cellDate.toISOString().split('T')[0];
+          const value = dataMap.get(dateStr) || 0;
+          weeks[weekIndex][dayIndex] = value;
+          if (value > 0) {
+            filledCells++;
+            console.log(`Filled cell [week ${weekIndex}, day ${dayIndex}] for date ${dateStr} with value ${value}`);
+          }
+        }
+      }
+    }
+
+    console.log(`Filled ${filledCells} cells with activity data out of ${WEEKS * DAYS} total cells`);
+    console.log("Activity grid sample (first 5 weeks):", weeks.slice(0, 5));
+
+    return weeks;
+  }, [heatmapData]);
 
   const getActivityColor = (level) => {
     const shades = [
@@ -173,17 +232,13 @@ export default function DashboardHome() {
     },
   ];
 
-  useEffect(() => {
-    fetchJournalStats();
-  }, []);
-
-  const fetchJournalStats = async () => {
+  const fetchJournalStats = useCallback(async () => {
     try {
       const response = await fetch(
         "http://localhost:8000/api/journals/stats",
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            ...getAuthHeaders(),
           },
         }
       );
@@ -195,7 +250,41 @@ export default function DashboardHome() {
     } catch (error) {
       console.error("Failed to fetch journal stats:", error);
     }
-  };
+  }, [getAuthHeaders]);
+
+  const fetchHeatmapData = useCallback(async () => {
+    try {
+      setLoadingHeatmap(true);
+      const currentYear = new Date().getFullYear();
+      const response = await fetch(
+        `http://localhost:8000/api/journals/heatmap/${currentYear}`,
+        {
+          headers: {
+            ...getAuthHeaders(),
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Heatmap data received:", data);
+        console.log("Total data points:", data.data?.length);
+        console.log("Sample data points:", data.data?.slice(0, 5));
+        setHeatmapData(data);
+      } else {
+        console.error("Failed to fetch heatmap data:", response.status, response.statusText);
+      }
+    } catch (error) {
+      console.error("Failed to fetch heatmap data:", error);
+    } finally {
+      setLoadingHeatmap(false);
+    }
+  }, [getAuthHeaders]);
+
+  useEffect(() => {
+    fetchJournalStats();
+    fetchHeatmapData();
+  }, [fetchJournalStats, fetchHeatmapData]);
 
   const handleStartQuiz = () => {
     setShowQuiz(true);
@@ -664,40 +753,69 @@ export default function DashboardHome() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <Zap className="w-4 h-4 text-gray-400" />
+              <span className="text-xs text-gray-500">Less</span>
               <div className="flex gap-1">
                 {[0, 1, 2, 3, 4].map((lvl) => (
                   <div
                     key={lvl}
                     className={`w-3 h-3 rounded ${getActivityColor(lvl)}`}
+                    title={
+                      lvl === 0 ? "No entries" :
+                      lvl === 1 ? "1-2 entries" :
+                      lvl === 2 ? "3 entries" :
+                      lvl === 3 ? "4 entries" :
+                      "5+ entries"
+                    }
                   />
                 ))}
               </div>
-              <Flame className="w-4 h-4 text-orange-500" />
+              <span className="text-xs text-gray-500">More</span>
             </div>
           </div>
 
           <div className="w-full">
-            <div className="flex gap-0.5 pb-2 w-full justify-between">
-              {activityData.map((week, i) => (
-                <div
-                  key={i}
-                  className="flex flex-col gap-0.5 flex-1 items-center"
-                >
-                  {week.map((day, j) => (
-                    <div
-                      key={j}
-                      className={`w-full aspect-square rounded-sm ${getActivityColor(
-                        day
-                      )} hover:scale-125 transition-transform cursor-pointer`}
-                      title={`Week ${i + 1}, Day ${
-                        j + 1
-                      }: Activity level ${day}`}
-                    />
-                  ))}
+            {loadingHeatmap ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <div className="w-8 h-8 border-4 border-green-200 border-t-green-600 rounded-full animate-spin mx-auto mb-2"></div>
+                  <p className="text-sm text-gray-500">Loading activity data...</p>
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="flex gap-0.5 pb-2 w-full justify-between">
+                {activityData.map((week, i) => (
+                  <div
+                    key={i}
+                    className="flex flex-col gap-0.5 flex-1 items-center"
+                  >
+                    {week.map((day, j) => {
+                      // Calculate the date for this cell
+                      const currentYear = new Date().getFullYear();
+                      const startOfYear = new Date(currentYear, 0, 1);
+                      const cellDate = new Date(startOfYear);
+                      cellDate.setDate(startOfYear.getDate() + (i * 7 + j));
+                      
+                      // Find matching data point
+                      const dataPoint = heatmapData?.data?.find(
+                        (point) => point.date === cellDate.toISOString().split('T')[0]
+                      );
+                      
+                      const tooltip = dataPoint?.tooltip || `${cellDate.toLocaleDateString()}: No entries`;
+                      
+                      return (
+                        <div
+                          key={j}
+                          className={`w-full aspect-square rounded-sm ${getActivityColor(
+                            day
+                          )} hover:scale-125 transition-transform cursor-pointer`}
+                          title={tooltip}
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
