@@ -117,7 +117,7 @@ class EmotionalSupportChatbot:
             sessions_dir: Directory to store chat session JSON files
         """
         self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-        self.model = "llama-3.1-70b-versatile"
+        self.model = "llama-3.1-8b-instant"
         self.sessions_dir = Path(sessions_dir)
         self.sessions_dir.mkdir(exist_ok=True)
         self.sessions: Dict[str, Dict] = {}
@@ -169,29 +169,13 @@ When you have access to the user's recent mental health scores, use this informa
     ) -> dict:
         """
         Chat with user in given session (message is already anonymized)
-        
-        Args:
-            session_id: Session identifier
-            user_message: User's message (already anonymized by API endpoint)
-            temperature: Response creativity
-            max_tokens: Maximum response length
-            mental_health_context: Recent mental health scores for context
         """
         try:
-            if session_id not in self.sessions:
-                return {
-                    'success': False,
-                    'error': f'Session {session_id} not found'
-                }
-            
-            session = self.sessions[session_id]
+            # Get or create session (this was missing!)
+            session = self.get_session(session_id)
             
             # Add user message to history (already anonymized)
-            session['messages'].append({
-                'role': 'user',
-                'content': user_message,
-                'timestamp': datetime.utcnow().isoformat()
-            })
+            session.add_message('user', user_message)
             
             # Prepare system prompt with mental health context
             enhanced_system_prompt = self.system_prompt
@@ -237,13 +221,15 @@ When you have access to the user's recent mental health scores, use this informa
                 
                 enhanced_system_prompt += context_str
             
+            # Get messages for LLM (last 10 for context)
+            messages_for_llm = session.get_messages_for_llm()[-10:]
+            
             # Get response from LLM with context
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {'role': 'system', 'content': enhanced_system_prompt},
-                    *[{'role': msg['role'], 'content': msg['content']} 
-                      for msg in session['messages'][-10:]]  # Last 10 messages for context
+                    *messages_for_llm
                 ],
                 temperature=temperature,
                 max_tokens=max_tokens
@@ -252,31 +238,23 @@ When you have access to the user's recent mental health scores, use this informa
             assistant_message = response.choices[0].message.content
             
             # Add assistant response to history
-            session['messages'].append({
-                'role': 'assistant',
-                'content': assistant_message,
-                'timestamp': datetime.utcnow().isoformat()
-            })
-            
-            session['last_activity'] = datetime.utcnow()
-            session['message_count'] += 1
-            
-            # Save session
-            self._save_session(session_id, session)
+            session.add_message('assistant', assistant_message)
             
             return {
                 'success': True,
                 'session_id': session_id,
                 'assistant_message': assistant_message,
                 'session_info': {
-                    'message_count': session['message_count'],
-                    'created_at': session['created_at'].isoformat(),
-                    'last_activity': session['last_activity'].isoformat()
+                    'message_count': len(session.messages),
+                    'created_at': session.created_at,
+                    'last_updated': session.last_updated
                 }
             }
             
         except Exception as e:
             print(f"Chat error for session {session_id}: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 'success': False,
                 'error': str(e)

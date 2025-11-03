@@ -12,6 +12,9 @@ import {
   CheckCircle,
   ArrowRight,
   BarChart3,
+  Flame,
+  Edit3,
+  BookOpen,
   X,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
@@ -348,79 +351,139 @@ export default function DashboardHome() {
     const hasAnswer = selectedAnswers[question.id] !== undefined;
 
     return (
-      <div className="min-h-screen bg-linear-to-br from-teal-50 to-blue-50 p-6">
-        <div className="max-w-3xl mx-auto">
-          {/* Progress Bar */}
-          <div className="mb-8">
-            <div className="flex justify-between items-center mb-2">
-              <h2 className="text-lg font-semibold text-gray-700">
-                Daily Wellness Check
-              </h2>
-              <span className="text-sm text-gray-600">
-                Question {currentQuestion + 1} of {quizQuestions.length}
-              </span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-[#61BDD3] to-[#4a9db8] p-6 text-white relative">
+            <button
+              onClick={() => setShowQuiz(false)}
+              className="absolute top-4 right-4 text-white hover:bg-white/20 p-2 rounded-lg transition-colors"
+            >
+              ✕
+            </button>
+            <h2 className="text-2xl font-bold mb-4">Daily Wellness Quiz</h2>
+            <div className="w-full bg-white/30 rounded-full h-2">
               <div
-                className="bg-teal-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${getProgressPercentage()}%` }}
+                className="bg-white h-2 rounded-full transition-all duration-300"
+                style={{
+                  width: `${((currentQuestion + 1) / quizQuestions.length) * 100}%`,
+                }}
               />
             </div>
+            <p className="text-sm text-white/90 mt-2">
+              Question {currentQuestion + 1} of {quizQuestions.length}
+            </p>
           </div>
 
-          {/* Question Card */}
-          <div className="bg-white rounded-2xl shadow-lg p-8 mb-6">
-            <h3 className="text-2xl font-bold text-gray-900 mb-8">
-              {question.question}
-            </h3>
-
-            <div className="space-y-3">
-              {question.options.map((option) => (
-                <button
-                  key={option.value}
-                  onClick={() => handleSelectAnswer(option.value)}
-                  className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
-                    selectedAnswers[question.id] === option.value
-                      ? "border-teal-600 bg-teal-50"
-                      : "border-gray-200 hover:border-teal-300 hover:bg-gray-50"
-                  }`}
-                >
-                  <div className="flex items-center">
-                    <div
-                      className={`w-6 h-6 rounded-full border-2 mr-4 flex items-center justify-center ${
-                        selectedAnswers[question.id] === option.value
-                          ? "border-teal-600 bg-teal-600"
-                          : "border-gray-300"
-                      }`}
-                    >
-                      {selectedAnswers[question.id] === option.value && (
-                        <CheckCircle className="w-4 h-4 text-white" />
-                      )}
-                    </div>
-                    <span className="text-gray-700">{option.label}</span>
+          {/* Content - Scrollable */}
+          <div className="p-8 overflow-y-auto max-h-[calc(85vh-200px)]">
+            {quizCompleted ? (
+              <div className="text-center py-8">
+                <div className="mb-6">
+                  <div className="w-20 h-20 bg-[#61BDD3]/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span className="text-4xl">✓</span>
                   </div>
-                </button>
-              ))}
-            </div>
-          </div>
+                  <h3 className="text-2xl font-bold text-gray-800 mb-2">
+                    Quiz Complete!
+                  </h3>
+                  <p className="text-gray-600">
+                    Thank you for completing the Daily Wellness Quiz
+                  </p>
+                </div>
 
-          {/* Navigation Buttons */}
-          <div className="flex justify-between">
-            <button
-              onClick={handlePrevious}
-              disabled={currentQuestion === 0}
-              className="px-6 py-3 rounded-lg font-medium text-gray-700 bg-white border-2 border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Previous
-            </button>
-            <button
-              onClick={handleNext}
-              disabled={!hasAnswer}
-              className="px-6 py-3 rounded-lg font-medium text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-            >
-              {currentQuestion === quizQuestions.length - 1 ? "Submit" : "Next"}
-              <ArrowRight className="w-5 h-5" />
-            </button>
+                {quizResults && (
+                  <div className="bg-[#61BDD3]/10 border-l-4 border-[#61BDD3] rounded-lg p-6 my-6 text-left">
+                    <h4 className="font-semibold text-gray-800 mb-3">
+                      Your Results:
+                    </h4>
+                    <div className="space-y-2 text-gray-700">
+                      <p>
+                        <span className="font-medium">Overall Wellness:</span>{" "}
+                        {quizResults.overall_score}/10
+                      </p>
+                      <p>
+                        <span className="font-medium">Stress Level:</span>{" "}
+                        {quizResults.stress_level}
+                      </p>
+                      <p>
+                        <span className="font-medium">Mood:</span>{" "}
+                        {quizResults.mood}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => {
+                    setShowQuiz(false);
+                    setQuizCompleted(false);
+                    setCurrentQuestion(0);
+                    setSelectedAnswers({});
+                  }}
+                  className="w-full bg-[#61BDD3] hover:bg-[#4a9db8] text-white font-semibold py-3 px-6 rounded-xl transition-colors"
+                >
+                  Back to Dashboard
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* Question */}
+                <div className="mb-8">
+                  <h3 className="text-xl font-semibold text-gray-800 mb-6">
+                    {quizQuestions[currentQuestion]?.question}
+                  </h3>
+
+                  {/* Answer Options */}
+                  <div className="space-y-3">
+                    {quizQuestions[currentQuestion]?.options?.map((option, index) => (
+                      <label
+                        key={index}
+                        className={`flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all ${
+                          selectedAnswers[currentQuestion] === index
+                            ? "border-[#61BDD3] bg-[#61BDD3]/10"
+                            : "border-gray-200 hover:border-[#61BDD3]/50 hover:bg-gray-50"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`question-${currentQuestion}`}
+                          checked={selectedAnswers[currentQuestion] === index}
+                          onChange={() =>
+                            setSelectedAnswers({
+                              ...selectedAnswers,
+                              [currentQuestion]: index,
+                            })
+                          }
+                          className="w-5 h-5 text-[#61BDD3] cursor-pointer accent-[#61BDD3]"
+                        />
+                        <span className="ml-4 text-gray-700 font-medium">
+                          {typeof option === 'object' ? option.label || option.value : option}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Navigation Buttons */}
+                <div className="flex gap-4 pt-4 border-t border-gray-200">
+                  <button
+                    onClick={handlePreviousQuestion}
+                    disabled={currentQuestion === 0}
+                    className="flex-1 px-6 py-3 rounded-xl font-semibold text-[#61BDD3] bg-white border-2 border-[#61BDD3] hover:bg-[#61BDD3]/5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    ← Previous
+                  </button>
+                  <button
+                    onClick={handleNextQuestion}
+                    disabled={selectedAnswers[currentQuestion] === undefined}
+                    className="flex-1 px-6 py-3 rounded-xl font-semibold text-white bg-[#61BDD3] hover:bg-[#4a9db8] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                  >
+                    {currentQuestion === quizQuestions.length - 1 ? "Submit" : "Next"}
+                    →
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -580,88 +643,10 @@ export default function DashboardHome() {
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Welcome Section */}
-        <div className="bg-gradient-to-r from-teal-500 to-blue-600 rounded-2xl p-8 text-white mb-8">
-          <h2 className="text-3xl font-bold mb-4">
-            Welcome back, {user?.full_name || "User"}!
-          </h2>
-          <p className="text-lg opacity-90 mb-6">
-            Take control of your mental health with personalized resources and
-            professional support.
-          </p>
-          <button
-            onClick={handleStartQuiz}
-            className="bg-white text-teal-600 px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors inline-flex items-center gap-2"
-          >
-            <CheckCircle className="w-5 h-5" />
-            Start Daily Wellness Check
-          </button>
-        </div>
+        
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          {/* ...existing stats cards... */}
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <div className="flex items-center">
-              <div className="p-3 rounded-full bg-green-100">
-                <CheckCircle className="w-6 h-6 text-green-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">
-                  Journal Entries
-                </p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {journalStats.total_entries}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <div className="flex items-center">
-              <div className="p-3 rounded-full bg-orange-100">
-                <Activity className="w-6 h-6 text-orange-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">
-                  Current Streak
-                </p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {journalStats.current_streak} days
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <div className="flex items-center">
-              <div className="p-3 rounded-full bg-blue-100">
-                <TrendingUp className="w-6 h-6 text-blue-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">
-                  Longest Streak
-                </p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {journalStats.longest_streak} days
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <div className="flex items-center">
-              <div className="p-3 rounded-full bg-purple-100">
-                <Award className="w-6 h-6 text-purple-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">
-                  Wellness Score
-                </p>
-                <p className="text-2xl font-bold text-gray-900">--</p>
-              </div>
-            </div>
-          </div>
-        </div>
+        
 
         {/* --- Activity Heatmap --- */}
         <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
@@ -715,7 +700,7 @@ export default function DashboardHome() {
         {/* --- Daily Quiz & Support --- */}
         <div className="grid md:grid-cols-2 gap-6">
           {/* Daily Quiz Card */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mt-8">
             <div className="flex items-center justify-between mb-4">
               <div className="bg-blue-50 p-3 rounded-xl">
                 {quizTaken ? (
@@ -754,7 +739,7 @@ export default function DashboardHome() {
           </div>
 
           {/* Support Card */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mt-8">
             <div className="flex items-center justify-between mb-4">
               <div className="bg-rose-50 p-3 rounded-xl">
                 <Heart className="w-5 h-5 text-rose-500" />
@@ -769,14 +754,17 @@ export default function DashboardHome() {
               Access breathing exercises and guided meditation instantly.
             </p>
 
-            <button className="border border-[#1A3A37] text-[#1A3A37] px-4 py-2 rounded-full text-sm font-medium hover:bg-[#1A3A37] hover:text-white transition-colors">
+            <button 
+              onClick={() => navigate("/calming")}
+              className="border border-[#1A3A37] text-[#1A3A37] px-4 py-2 rounded-full text-sm font-medium hover:bg-[#1A3A37] hover:text-white transition-colors"
+            >
               Get Help Now
             </button>
           </div>
         </div>
 
         {/* --- Journal Section --- */}
-        <section className="bg-white rounded-2xl p-8 shadow-sm">
+        <section className="bg-white rounded-2xl p-8 shadow-sm mt-8">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <div className="flex items-start gap-4 flex-1">
               <div className="bg-green-100 p-4 rounded-xl">
@@ -807,7 +795,7 @@ export default function DashboardHome() {
 
         {/* --- Articles Section --- */}
         <section>
-          <header className="flex items-center justify-between mb-6">
+          <header className="flex items-center justify-between mb-6 pt-15">
             <div>
               <h2 className="text-2xl font-bold text-gray-800">
                 Wellness Resources

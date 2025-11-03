@@ -9,6 +9,7 @@ import Sessions from "./pages/Sessions";
 import Progress from "./pages/Progress";
 import Resources from "./pages/Resources";
 import Profile from "./pages/Profile";
+import Calming from "./pages/Calming";
 import { AuthProvider } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -19,6 +20,7 @@ function App() {
         <Routes>
           <Route path="/" element={<RiveHero />} />
           <Route path="/home" element={<Home />} />
+          <Route path="/calming" element={<Calming />} />
           <Route
             path="/dashboard"
             element={

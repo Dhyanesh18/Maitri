@@ -877,12 +877,10 @@ async def create_chat_session():
     }
 
 @app.post("/api/chat/message", response_model=ChatResponse)
-async def send_chat_message(
-    request: ChatRequest,
-    current_user = Depends(get_current_active_user)
-):
+async def send_chat_message(request: ChatRequest):
     """
-    Send a message to the emotional support chatbot with optional PII removal and mental health context
+    Send a message to the emotional support chatbot with optional PII removal
+    NO AUTHENTICATION REQUIRED - Anonymous mental health support
     """
     try:
         session_id = request.session_id
@@ -897,60 +895,15 @@ async def send_chat_message(
         else:
             print(f"[Chat] PII removal disabled by user")
         
-        # Fetch recent mental health scores for context
-        try:
-            journals_collection = await JournalService.get_journals_collection()
-            from datetime import timedelta
-            cutoff_date = datetime.utcnow() - timedelta(days=5)
-            
-            journals = await journals_collection.find({
-                "user_id": current_user.id,
-                "is_deleted": False,
-                "timestamp": {"$gte": cutoff_date}
-            }).sort("timestamp", -1).to_list(length=100)
-            
-            # Extract scores by day
-            daily_scores = {}
-            for journal in journals:
-                date_key = journal["timestamp"].date().isoformat()
-                
-                if date_key not in daily_scores:
-                    daily_scores[date_key] = {
-                        "depression": [],
-                        "anxiety": [],
-                        "stress": [],
-                        "mental_health": []
-                    }
-                
-                llm = journal.get("llm_assessment", {})
-                daily_scores[date_key]["depression"].append(llm.get("depression_score", 0))
-                daily_scores[date_key]["anxiety"].append(llm.get("anxiety_score", 0))
-                daily_scores[date_key]["stress"].append(llm.get("stress_score", 0))
-                daily_scores[date_key]["mental_health"].append(llm.get("mental_health_score", 0))
-            
-            # Calculate daily averages and format for chatbot
-            mental_health_context = []
-            for date_key in sorted(daily_scores.keys(), reverse=True)[:5]:
-                day_data = daily_scores[date_key]
-                mental_health_context.append({
-                    "date": date_key,
-                    "depression": round(sum(day_data["depression"]) / len(day_data["depression"])),
-                    "anxiety": round(sum(day_data["anxiety"]) / len(day_data["anxiety"])),
-                    "stress": round(sum(day_data["stress"]) / len(day_data["stress"])),
-                    "overall": round(sum(day_data["mental_health"]) / len(day_data["mental_health"]))
-                })
-            
-            print(f"[Chat] Adding mental health context: {len(mental_health_context)} days")
-        except Exception as e:
-            print(f"[Chat] Failed to fetch mental health context: {e}")
-            mental_health_context = None
+        # No mental health context since no user authentication
+        mental_health_context = None
         
         response = chatbot_service.chat(
             session_id=session_id,
             user_message=message_to_send,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
-            mental_health_context=mental_health_context  # Add context
+            mental_health_context=mental_health_context
         )
         
         if response['success']:

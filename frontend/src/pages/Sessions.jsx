@@ -447,13 +447,7 @@ export default function Sessions() {
             accept="image/*,.pdf,.doc,.docx,.txt"
           />
 
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isLoading}
-            className="shrink-0 p-3 text-gray-500 hover:text-[#1A3A37] hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Paperclip className="w-5 h-5" />
-          </button>
+          
 
           <div className="flex-1">
             <textarea
