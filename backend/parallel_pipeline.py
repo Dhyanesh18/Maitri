@@ -117,38 +117,88 @@ class Transcriber:
 
 # AUDIO EMOTION
 class AudioEmotionAnalyzer:
+    """
+    Uses SpeechBrain's fine-tuned wav2vec2 model trained specifically on IEMOCAP
+    Achieves 78.7% accuracy on IEMOCAP test set (vs 67% for SUPERB model)
+    """
     def __init__(self):
-        model_name = "superb/wav2vec2-base-superb-er"
-        self.feature_extractor = AutoFeatureExtractor.from_pretrained(model_name)
-        self.model = AutoModelForAudioClassification.from_pretrained(model_name)
+        # Install SpeechBrain first: pip install speechbrain
+        try:
+            from speechbrain.inference.interfaces import foreign_class
+            
+            # Load the SpeechBrain wav2vec2 model for IEMOCAP
+            self.classifier = foreign_class(
+                source="speechbrain/emotion-recognition-wav2vec2-IEMOCAP",
+                pymodule_file="custom_interface.py",
+                classname="CustomEncoderWav2vec2Classifier"
+            )
+            self.use_speechbrain = True
+            self.emotions = ['neu', 'hap', 'sad', 'ang']  # IEMOCAP labels
+            self.emotion_map = {
+                'neu': 'neutral',
+                'hap': 'happy',
+                'sad': 'sad',
+                'ang': 'angry'
+            }
+        except ImportError:
+            print("⚠️ SpeechBrain not installed. Falling back to SUPERB model (67% accuracy)")
+            print("For best performance, install: pip install speechbrain")
+            self.use_speechbrain = False
+            
+            # Fallback to SUPERB model
+            from transformers import AutoModelForAudioClassification, AutoFeatureExtractor
+            model_name = "superb/wav2vec2-base-superb-er"
+            self.feature_extractor = AutoFeatureExtractor.from_pretrained(model_name)
+            self.model = AutoModelForAudioClassification.from_pretrained(model_name)
+            self.emotions = ['neutral', 'happy', 'sad', 'angry']
     
     def analyze(self, audio_path: str) -> Dict:
-        waveform, sample_rate = torchaudio.load(audio_path)
-        
-        if sample_rate != 16000:
-            resampler = torchaudio.transforms.Resample(sample_rate, 16000)
-            waveform = resampler(waveform)
-        
-        inputs = self.feature_extractor(
-            waveform.squeeze().numpy(),
-            sampling_rate=16000,
-            return_tensors="pt"
-        )
-        
-        with torch.no_grad():
-            logits = self.model(**inputs).logits
-        
-        probs = torch.nn.functional.softmax(logits, dim=-1)[0]
-        emotions = ['neutral', 'happy', 'sad', 'angry']
-        predicted_idx = torch.argmax(probs).item()
-        
-        return {
-            "emotion": emotions[predicted_idx],
-            "confidence": float(probs[predicted_idx]),
-            "all_emotions": {emotions[i]: float(probs[i]) for i in range(len(emotions))}
-        }
-
-    model_size = "base.en"
+        if self.use_speechbrain:
+            # Use SpeechBrain model (78.7% accuracy)
+            out_prob, score, index, text_lab = self.classifier.classify_file(audio_path)
+            
+            # Convert to probabilities dictionary
+            emotion_label = text_lab[0]  # e.g., 'ang', 'hap', etc.
+            mapped_emotion = self.emotion_map.get(emotion_label, emotion_label)
+            
+            return {
+                "emotion": mapped_emotion,
+                "confidence": float(score[0]),
+                "all_emotions": {
+                    self.emotion_map[self.emotions[i]]: float(out_prob[0][i])
+                    for i in range(len(self.emotions))
+                },
+                "model_used": "speechbrain_wav2vec2_iemocap",
+                "accuracy": "78.7%"
+            }
+        else:
+            # Fallback to SUPERB model (67% accuracy)
+            import torchaudio
+            waveform, sample_rate = torchaudio.load(audio_path)
+            
+            if sample_rate != 16000:
+                resampler = torchaudio.transforms.Resample(sample_rate, 16000)
+                waveform = resampler(waveform)
+            
+            inputs = self.feature_extractor(
+                waveform.squeeze().numpy(),
+                sampling_rate=16000,
+                return_tensors="pt"
+            )
+            
+            with torch.no_grad():
+                logits = self.model(**inputs).logits
+            
+            probs = torch.nn.functional.softmax(logits, dim=-1)[0]
+            predicted_idx = torch.argmax(probs).item()
+            
+            return {
+                "emotion": self.emotions[predicted_idx],
+                "confidence": float(probs[predicted_idx]),
+                "all_emotions": {self.emotions[i]: float(probs[i]) for i in range(len(self.emotions))},
+                "model_used": "superb_wav2vec2_base",
+                "accuracy": "~67%"
+            }
 
 # Load with GPU acceleration
 # model = WhisperModel(model_size, device="cuda", compute_type="float16")
