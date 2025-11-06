@@ -297,29 +297,131 @@ export default function DashboardHome() {
   const handleSelectAnswer = (option) => {
     setSelectedAnswers((prev) => ({
       ...prev,
-      [currentQuestion]: option,
+      [quizQuestions[currentQuestion].id]: option,
     }));
   };
 
   const handleNextQuestion = () => {
     if (currentQuestion < quizQuestions.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
+    } else {
+      // Last question - submit quiz
+      handleSubmitQuiz();
     }
   };
 
-  const handleSubmitQuiz = () => {
-    setQuizTaken(true);
-    setShowQuizDialog(false);
-    setCurrentQuestion(0);
-    setSelectedAnswers({});
+  const handleSubmitQuiz = async () => {
+    // Calculate results first
+    const categoryScores = {};
+    let totalScore = 0;
+    let maxScore = 0;
 
-    // Show success toast
-    toast.success("Quiz completed! Your wellness check is recorded.", {
+    quizQuestions.forEach((q, index) => {
+      const answer = selectedAnswers[q.id];
+      if (answer !== undefined) {
+        const value = answer.value || answer;
+        totalScore += value;
+        maxScore += 5;
+
+        if (!categoryScores[q.category]) {
+          categoryScores[q.category] = { total: 0, count: 0 };
+        }
+        categoryScores[q.category].total += value;
+        categoryScores[q.category].count += 1;
+      }
+    });
+
+    const percentageScore = Math.round((totalScore / maxScore) * 100);
+
+    // Calculate category averages
+    const categories = {};
+    Object.keys(categoryScores).forEach((cat) => {
+      categories[cat] = Math.round(
+        (categoryScores[cat].total / (categoryScores[cat].count * 5)) * 100
+      );
+    });
+
+    // Determine wellness level
+    let wellnessLevel = "";
+    let wellnessColor = "";
+    let recommendations = [];
+
+    if (percentageScore >= 80) {
+      wellnessLevel = "Excellent";
+      wellnessColor = "text-green-600";
+      recommendations = [
+        "You're doing great! Keep up your current wellness practices.",
+        "Consider sharing your strategies with others who might benefit.",
+        "Continue your regular self-care routines.",
+      ];
+    } else if (percentageScore >= 60) {
+      wellnessLevel = "Good";
+      wellnessColor = "text-blue-600";
+      recommendations = [
+        "You're managing well overall. Focus on areas that need attention.",
+        "Try incorporating more stress-relief activities into your routine.",
+        "Maintain your current positive habits.",
+      ];
+    } else if (percentageScore >= 40) {
+      wellnessLevel = "Fair";
+      wellnessColor = "text-orange-600";
+      recommendations = [
+        "Consider talking to someone about how you're feeling.",
+        "Try establishing a regular sleep schedule.",
+        "Engage in activities that bring you joy.",
+        "Consider reaching out to supportive friends or family.",
+      ];
+    } else {
+      wellnessLevel = "Needs Attention";
+      wellnessColor = "text-red-600";
+      recommendations = [
+        "Your wellness needs attention. Consider speaking with a mental health professional.",
+        "Prioritize self-care and don't hesitate to ask for help.",
+        "Start with small, manageable steps to improve your wellbeing.",
+        "Reach out to trusted friends, family, or a counselor.",
+      ];
+    }
+
+    // Set results
+    setQuizResults({
+      percentageScore,
+      wellnessLevel,
+      wellnessColor,
+      categories,
+      recommendations,
+      totalAnswered: Object.keys(selectedAnswers).length,
+      totalQuestions: quizQuestions.length,
+    });
+
+    // Optional: Send to backend
+    try {
+      const quizData = {
+        answers: selectedAnswers,
+        overall_score: percentageScore,
+        categories: categories,
+        wellness_level: wellnessLevel,
+      };
+
+      await fetch("http://localhost:8000/api/wellness-quiz", {
+        method: "POST",
+        headers: {
+          ...getAuthHeaders(),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(quizData),
+      });
+    } catch (error) {
+      console.error("Failed to save quiz results:", error);
+      // Don't block the UI if backend fails
+    }
+
+    // Update state
+    setQuizCompleted(true);
+    setQuizTaken(true);
+
+    toast.success("Quiz completed! Check your wellness insights.", {
       position: "top-right",
       autoClose: 3000,
-      hideProgressBar: false,
-      closeOnClick: true,
-      pauseOnHover: true,
     });
   };
 
@@ -447,7 +549,7 @@ export default function DashboardHome() {
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
         <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden">
           {/* Header */}
-          <div className="bg-linear-to-r from-[#61BDD3] to-[#4a9db8] p-6 text-white relative">
+          <div className="bg-linear-to-r from-[#164343] to-[#196069] p-6 text-white relative">
             <button
               onClick={() => setShowQuiz(false)}
               className="absolute top-4 right-4 text-white hover:bg-white/20 p-2 rounded-lg transition-colors"
@@ -532,25 +634,20 @@ export default function DashboardHome() {
                       <label
                         key={index}
                         className={`flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all ${
-                          selectedAnswers[currentQuestion] === index
-                            ? "border-[#61BDD3] bg-[#61BDD3]/10"
+                          selectedAnswers[quizQuestions[currentQuestion].id]?.value === option.value
+                            ? "border-[#1b9092] bg-[#61BDD3]/10"
                             : "border-gray-200 hover:border-[#61BDD3]/50 hover:bg-gray-50"
                         }`}
                       >
                         <input
                           type="radio"
                           name={`question-${currentQuestion}`}
-                          checked={selectedAnswers[currentQuestion] === index}
-                          onChange={() =>
-                            setSelectedAnswers({
-                              ...selectedAnswers,
-                              [currentQuestion]: index,
-                            })
-                          }
-                          className="w-5 h-5 text-[#61BDD3] cursor-pointer accent-[#61BDD3]"
+                          checked={selectedAnswers[quizQuestions[currentQuestion].id]?.value === option.value}
+                          onChange={() => handleSelectAnswer(option)}
+                          className="w-5 h-5 text-[#0a4f49] cursor-pointer accent-[#1a7f80]"
                         />
                         <span className="ml-4 text-gray-700 font-medium">
-                          {typeof option === 'object' ? option.label || option.value : option}
+                          {option.label}
                         </span>
                       </label>
                     ))}
@@ -562,14 +659,14 @@ export default function DashboardHome() {
                   <button
                     onClick={handlePreviousQuestion}
                     disabled={currentQuestion === 0}
-                    className="flex-1 px-6 py-3 rounded-xl font-semibold text-[#61BDD3] bg-white border-2 border-[#61BDD3] hover:bg-[#61BDD3]/5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    className="flex-1 px-6 py-3 rounded-xl font-semibold text-[#174244] bg-white border-2 border-[#195857] hover:bg-[#61BDD3]/5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                   >
                     ← Previous
                   </button>
                   <button
                     onClick={handleNextQuestion}
-                    disabled={selectedAnswers[currentQuestion] === undefined}
-                    className="flex-1 px-6 py-3 rounded-xl font-semibold text-white bg-[#61BDD3] hover:bg-[#4a9db8] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                    disabled={!hasAnswer}
+                    className="flex-1 px-6 py-3 rounded-xl font-semibold text-white bg-[#257e7d] hover:bg-[#135353] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                   >
                     {currentQuestion === quizQuestions.length - 1 ? "Submit" : "Next"}
                     →
@@ -585,7 +682,7 @@ export default function DashboardHome() {
 
   if (quizCompleted && quizResults) {
     return (
-      <div className="min-h-screen bg-linear-to-br from-teal-50 to-blue-50 p-6">
+      <div className="min-h-screen p-6">
         <div className="max-w-4xl mx-auto">
           {/* Results Header */}
           <div className="bg-white rounded-2xl shadow-lg p-8 mb-6">
@@ -715,7 +812,7 @@ export default function DashboardHome() {
                 setShowQuiz(false);
                 setQuizCompleted(false);
               }}
-              className="flex-1 px-6 py-3 rounded-lg font-medium text-white bg-teal-600 hover:bg-teal-700 transition-colors"
+              className="flex-1 px-6 py-3 rounded-lg font-medium text-white bg-teal-900 hover:bg-teal-700 transition-colors"
             >
               Return to Dashboard
             </button>
@@ -735,12 +832,12 @@ export default function DashboardHome() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Welcome Section */}
-        
 
+        {/* Welcome Section */}
+        <div className="py-4 pb-10 pl-2"><h1 className="text-3xl font-semibold text-[#424d4c]">Welcome back, <span className="font-bold text-[#112b29]">{user?.full_name}</span> !</h1></div>
+      
         {/* Quick Stats */}
         
-
         {/* --- Activity Heatmap --- */}
         <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-6">
@@ -749,7 +846,7 @@ export default function DashboardHome() {
                 Your Activity
               </h2>
               <p className="text-gray-600 text-sm">
-                Keep up the consistency 🌱
+                Keep up the consistency 
               </p>
             </div>
             <div className="flex items-center gap-3">

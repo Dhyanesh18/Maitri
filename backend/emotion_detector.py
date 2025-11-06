@@ -117,9 +117,9 @@ class EmotionDetector:
         frames_per_interval = int(fps * interval_seconds)
         total_intervals = int(np.ceil(duration_seconds / interval_seconds))
         
-        print(f"⚡ Frame sampling enabled: processing 1 out of every {frame_skip} frames")
-        print(f"📊 Video: {total_frames} frames, {duration_seconds:.2f}s")
-        print(f"🎯 Effective processing: ~{total_frames // frame_skip} frames")
+        print(f"Frame sampling enabled: processing 1 out of every {frame_skip} frames")
+        print(f"Video: {total_frames} frames, {duration_seconds:.2f}s")
+        print(f"Effective processing: ~{total_frames // frame_skip} frames")
         
         # Storage for interval data
         intervals_data = []

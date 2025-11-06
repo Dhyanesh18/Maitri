@@ -17,10 +17,10 @@ async def examine_daily_summaries():
     
     # Count total summaries
     total_count = await summaries.count_documents({})
-    print(f"\n📊 Total daily summaries in database: {total_count}")
+    print(f"\nTotal daily summaries in database: {total_count}")
     
     if total_count == 0:
-        print("\n⚠️  No daily summaries found!")
+        print("\nNo daily summaries found!")
         print("This is why the heatmap is not showing data properly!")
         print("\nThe issue: daily_summaries are not being created when journals are added.")
         return

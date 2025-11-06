@@ -410,6 +410,120 @@ export default function Resources() {
   const stressFeedback = getImprovementFeedback(stressImprovement);
   const anxietyFeedback = getImprovementFeedback(anxietyImprovement);
 
+  // Define actual resources with real links
+  const recommendedActivities = [
+    {
+      title: "Morning Meditation",
+      description: "Continue your 10-minute morning routine - it's showing great results!",
+      duration: "10 min daily",
+      effectiveness: "85% effective",
+      icon: Star,
+      iconBg: "bg-yellow-50",
+      iconColor: "text-yellow-500",
+      url: "https://www.headspace.com/meditation/meditation-for-beginners",
+    },
+    {
+      title: "Evening Journaling",
+      description: "Your journal entries are helping track emotional patterns.",
+      duration: "15 min daily",
+      effectiveness: `${journals.length} entries logged`,
+      icon: Calendar,
+      iconBg: "bg-green-50",
+      iconColor: "text-green-500",
+      url: "/dashboard/progress",
+      internal: true,
+    },
+    {
+      title: "Breathing Exercises",
+      description: "Try the 4-7-8 technique when feeling anxious.",
+      duration: "3-5 min sessions",
+      effectiveness: "As needed",
+      icon: Activity,
+      iconBg: "bg-purple-50",
+      iconColor: "text-purple-500",
+      url: "/calming",
+      internal: true,
+    },
+  ];
+
+  const learningResources = [
+    {
+      title: "Cognitive Behavioral Therapy",
+      description: "Learn CBT techniques to manage negative thought patterns.",
+      progress: "6-part series",
+      status: "Evidence-based",
+      icon: Star,
+      iconBg: "bg-yellow-50",
+      iconColor: "text-yellow-500",
+      url: "https://www.apa.org/ptsd-guideline/patients-and-families/cognitive-behavioral",
+    },
+    {
+      title: "Mindfulness Guide",
+      description: "Deepen your mindfulness practice with guided exercises.",
+      progress: "Interactive guide",
+      status: "12 exercises",
+      icon: Brain,
+      iconBg: "bg-blue-50",
+      iconColor: "text-blue-500",
+      url: "https://ggia.berkeley.edu/practice/mindful_breathing",
+    },
+    {
+      title: "Stress Management",
+      description: "Advanced techniques for handling stress triggers.",
+      progress: "Comprehensive guide",
+      status: "Research-backed",
+      icon: Heart,
+      iconBg: "bg-red-50",
+      iconColor: "text-red-500",
+      url: "https://www.mayoclinic.org/healthy-lifestyle/stress-management/in-depth/stress-relievers/art-20047257",
+    },
+  ];
+
+  const personalInsights = [
+    {
+      title: "Best Performance",
+      description: `Your mood is most stable during ${stats.bestTime}.`,
+      detail: `Peak time: ${stats.bestTime}`,
+      status: journals.length > 0 ? "Based on your data" : "Sample insight",
+      icon: TrendingUp,
+      iconBg: "bg-green-50",
+      iconColor: "text-green-500",
+      url: "https://www.sleepfoundation.org/circadian-rhythm",
+    },
+    {
+      title: "Weekly Pattern",
+      description: stats.weekendImprovement > 0
+        ? `Weekends show ${stats.weekendImprovement}% improved stress levels - maintain this balance.`
+        : "Keep tracking to identify your weekly patterns.",
+      detail: "Weekend vs Weekday",
+      status: stats.weekendImprovement > 0
+        ? `${stats.weekendImprovement}% better`
+        : "Analyzing...",
+      icon: Calendar,
+      iconBg: "bg-blue-50",
+      iconColor: "text-blue-500",
+      url: "https://www.apa.org/topics/work-life-balance",
+    },
+    {
+      title: "Social Connections",
+      description: "Social connections can boost your overall wellbeing.",
+      detail: "Improvement area",
+      status: "High impact",
+      icon: Shield,
+      iconBg: "bg-purple-50",
+      iconColor: "text-purple-500",
+      url: "https://www.mentalhealth.org.uk/explore-mental-health/a-z-topics/relationships",
+    },
+  ];
+
+  const handleResourceClick = (resource) => {
+    if (resource.internal) {
+      navigate(resource.url);
+    } else {
+      window.open(resource.url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white p-6">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -604,72 +718,34 @@ export default function Resources() {
                 </div>
               </div>
               <div className="space-y-4">
-                <div className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-yellow-50 p-2 rounded-lg shrink-0">
-                      <Star className="w-4 h-4 text-yellow-500" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-gray-900 mb-1">
-                        Morning Meditation
-                      </h4>
-                      <p className="text-sm text-gray-600 mb-2">
-                        Continue your 10-minute morning routine - it's showing
-                        great results!
-                      </p>
-                      <div className="flex items-center text-xs text-gray-500">
-                        <span>10 min daily</span>
-                        <span className="mx-2">•</span>
-                        <span className="text-green-600">85% effective</span>
+                {recommendedActivities.map((activity, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => handleResourceClick(activity)}
+                    className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`${activity.iconBg} p-2 rounded-lg shrink-0`}>
+                        {React.createElement(activity.icon, {
+                          className: `w-4 h-4 ${activity.iconColor}`
+                        })}
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-gray-900 mb-1 group-hover:text-teal-600 transition-colors">
+                          {activity.title}
+                        </h4>
+                        <p className="text-sm text-gray-600 mb-2">
+                          {activity.description}
+                        </p>
+                        <div className="flex items-center text-xs text-gray-500">
+                          <span>{activity.duration}</span>
+                          <span className="mx-2">•</span>
+                          <span className="text-green-600">{activity.effectiveness}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-green-50 p-2 rounded-lg shrink-0">
-                      <Calendar className="w-4 h-4 text-green-500" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-gray-900 mb-1">
-                        Evening Journaling
-                      </h4>
-                      <p className="text-sm text-gray-600 mb-2">
-                        Your journal entries are helping track emotional
-                        patterns.
-                      </p>
-                      <div className="flex items-center text-xs text-gray-500">
-                        <span>15 min daily</span>
-                        <span className="mx-2">•</span>
-                        <span className="text-blue-600">
-                          {journals.length} entries logged
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-purple-50 p-2 rounded-lg shrink-0">
-                      <Activity className="w-4 h-4 text-purple-500" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-gray-900 mb-1">
-                        Breathing Exercises
-                      </h4>
-                      <p className="text-sm text-gray-600 mb-2">
-                        Try the 4-7-8 technique when feeling anxious.
-                      </p>
-                      <div className="flex items-center text-xs text-gray-500">
-                        <span>3-5 min sessions</span>
-                        <span className="mx-2">•</span>
-                        <span className="text-purple-600">As needed</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
 
@@ -687,69 +763,34 @@ export default function Resources() {
                 </div>
               </div>
               <div className="space-y-4">
-                <div className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-yellow-50 p-2 rounded-lg shrink-0">
-                      <Star className="w-4 h-4 text-yellow-500" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-gray-900 mb-1">
-                        Cognitive Behavioral Therapy
-                      </h4>
-                      <p className="text-sm text-gray-600 mb-2">
-                        Learn CBT techniques to manage negative thought
-                        patterns.
-                      </p>
-                      <div className="flex items-center text-xs text-gray-500">
-                        <span>6-part series</span>
-                        <span className="mx-2">•</span>
-                        <span className="text-green-600">4 of 6 completed</span>
+                {learningResources.map((resource, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => handleResourceClick(resource)}
+                    className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`${resource.iconBg} p-2 rounded-lg shrink-0`}>
+                        {React.createElement(resource.icon, {
+                          className: `w-4 h-4 ${resource.iconColor}`
+                        })}
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-gray-900 mb-1 group-hover:text-teal-600 transition-colors">
+                          {resource.title}
+                        </h4>
+                        <p className="text-sm text-gray-600 mb-2">
+                          {resource.description}
+                        </p>
+                        <div className="flex items-center text-xs text-gray-500">
+                          <span>{resource.progress}</span>
+                          <span className="mx-2">•</span>
+                          <span className="text-blue-600">{resource.status}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-blue-50 p-2 rounded-lg shrink-0">
-                      <Brain className="w-4 h-4 text-blue-500" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-gray-900 mb-1">
-                        Mindfulness Guide
-                      </h4>
-                      <p className="text-sm text-gray-600 mb-2">
-                        Deepen your mindfulness practice with guided exercises.
-                      </p>
-                      <div className="flex items-center text-xs text-gray-500">
-                        <span>Interactive guide</span>
-                        <span className="mx-2">•</span>
-                        <span className="text-blue-600">12 exercises</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-red-50 p-2 rounded-lg shrink-0">
-                      <Heart className="w-4 h-4 text-red-500" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-gray-900 mb-1">
-                        Stress Management
-                      </h4>
-                      <p className="text-sm text-gray-600 mb-2">
-                        Advanced techniques for handling stress triggers.
-                      </p>
-                      <div className="flex items-center text-xs text-gray-500">
-                        <span>4-module course</span>
-                        <span className="mx-2">•</span>
-                        <span className="text-red-600">Not started</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
 
@@ -769,76 +810,42 @@ export default function Resources() {
                 </div>
               </div>
               <div className="space-y-4">
-                <div className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-green-50 p-2 rounded-lg shrink-0">
-                      <TrendingUp className="w-4 h-4 text-green-500" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-gray-900 mb-1">
-                        Best Performance
-                      </h4>
-                      <p className="text-sm text-gray-600 mb-2">
-                        Your mood is most stable during {stats.bestTime}.
-                      </p>
-                      <div className="flex items-center text-xs text-gray-500">
-                        <span>Peak time: {stats.bestTime}</span>
-                        <span className="mx-2">•</span>
-                        <span className="text-green-600">
-                          {journals.length > 0 ? "Based on your data" : "Sample insight"}
-                        </span>
+                {personalInsights.map((insight, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => handleResourceClick(insight)}
+                    className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`${insight.iconBg} p-2 rounded-lg shrink-0`}>
+                        {React.createElement(insight.icon, {
+                          className: `w-4 h-4 ${insight.iconColor}`
+                        })}
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-gray-900 mb-1 group-hover:text-teal-600 transition-colors">
+                          {insight.title}
+                        </h4>
+                        <p className="text-sm text-gray-600 mb-2">
+                          {insight.description}
+                        </p>
+                        <div className="flex items-center text-xs text-gray-500">
+                          <span>{insight.detail}</span>
+                          <span className="mx-2">•</span>
+                          <span className={
+                            insight.status.includes('better') || insight.status.includes('data')
+                              ? 'text-green-600'
+                              : insight.status.includes('impact')
+                              ? 'text-purple-600'
+                              : 'text-blue-600'
+                          }>
+                            {insight.status}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-blue-50 p-2 rounded-lg shrink-0">
-                      <Calendar className="w-4 h-4 text-blue-500" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-gray-900 mb-1">
-                        Weekly Pattern
-                      </h4>
-                      <p className="text-sm text-gray-600 mb-2">
-                        {stats.weekendImprovement > 0
-                          ? `Weekends show ${stats.weekendImprovement}% improved stress levels - maintain this balance.`
-                          : "Keep tracking to identify your weekly patterns."}
-                      </p>
-                      <div className="flex items-center text-xs text-gray-500">
-                        <span>Weekend vs Weekday</span>
-                        <span className="mx-2">•</span>
-                        <span className="text-blue-600">
-                          {stats.weekendImprovement > 0
-                            ? `${stats.weekendImprovement}% better`
-                            : "Analyzing..."}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-purple-50 p-2 rounded-lg shrink-0">
-                      <Shield className="w-4 h-4 text-purple-500" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-gray-900 mb-1">
-                        Focus Area
-                      </h4>
-                      <p className="text-sm text-gray-600 mb-2">
-                        Social connections can boost your overall wellbeing.
-                      </p>
-                      <div className="flex items-center text-xs text-gray-500">
-                        <span>Improvement area</span>
-                        <span className="mx-2">•</span>
-                        <span className="text-purple-600">High impact</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </div>

@@ -8,3 +8,14 @@ passlib[bcrypt]
 bcrypt>=4.0.0
 python-dotenv
 pydantic[email]
+torch==2.0.0
+torchvision==0.15.0
+torchaudio==2.0.0
+transformers==4.30.0
+pillow
+opencv-python
+facenet-pytorch
+spacy
+groq
+httpx
+psutil
