@@ -39,6 +39,7 @@ from datetime import datetime
 from bson import ObjectId
 from services.journal_service import JournalService
 from models.journal import JournalType
+from text_chunking_analyzer import ChunkedTextAnalyzer
 
 class PrivacyModeRequest(str, Enum):
     FULL_PRIVACY = "full_privacy"
@@ -469,6 +470,9 @@ os.environ["FASTAPI_MAX_BODY_SIZE"] = "524288000"
 file_manager = FileManager()
 analysis_service = MultimodalAnalysisService()
 video_service = VideoService(file_manager, analysis_service)
+
+# Initialize chunked analyzer globally
+chunked_text_analyzer = ChunkedTextAnalyzer()
 
 
 @app.on_event("startup")
@@ -966,6 +970,7 @@ async def analyze_text_journal(
 ):
     """
     Analyze text journal entry with privacy options and save to database
+    NOW SENDS ALL CHUNK DISTRIBUTIONS TO LLM
     """
     try:
         journal_id = file_manager.generate_task_id()
@@ -976,26 +981,72 @@ async def analyze_text_journal(
         print(f"Privacy Mode: {request.privacy_mode.value}")
         print(f"Text Length: {len(request.text)} characters")
         
-        # Run local classifiers (always)
-        emotion_result = analyze_emotion_local(request.text)
-        depression_result = analyze_text_depression(request.text)
+        # Run chunked classifiers (handles long text automatically)
+        print("Running emotion analysis (chunked if needed)...")
+        emotion_result = chunked_text_analyzer.analyze_emotion_chunked(request.text)
+        
+        print("Running depression analysis (chunked if needed)...")
+        depression_result = chunked_text_analyzer.analyze_depression_chunked(request.text)
+        
+        # Log chunking info
+        if emotion_result.get('chunking_applied'):
+            print(f"✓ Emotion analysis: {emotion_result['chunks_analyzed']} chunks, {emotion_result['total_tokens']} tokens")
+        else:
+            print(f"✓ Emotion analysis: Single pass, {emotion_result['total_tokens']} tokens")
+        
+        if depression_result.get('chunking_applied'):
+            print(f"✓ Depression analysis: {depression_result['chunks_analyzed']} chunks, {depression_result['total_tokens']} tokens")
+        else:
+            print(f"✓ Depression analysis: Single pass, {depression_result['total_tokens']} tokens")
         
         if request.privacy_mode == PrivacyModeRequest.FULL_PRIVACY:
-            # FULL PRIVACY: Only distributions to LLM
+            # FULL PRIVACY: Only distributions to LLM (ALL CHUNKS)
             print("Mode: Full Privacy - Using only classifier distributions")
             
-            llm_prompt = f"""Analyze this mental health assessment data:
+            # Build chunk-by-chunk emotion analysis
+            emotion_chunks_str = ""
+            if emotion_result.get('chunking_applied'):
+                emotion_chunks_str = "\n**EMOTION ANALYSIS BY CHUNK:**\n"
+                for chunk_dist in emotion_result['chunk_distributions']:
+                    emotion_chunks_str += f"\nChunk {chunk_dist['chunk_index']}:\n"
+                    emotion_chunks_str += f"  Preview: {chunk_dist['chunk_preview']}\n"
+                    emotion_chunks_str += f"  Distribution: {json.dumps(chunk_dist['distribution'], indent=4)}\n"
+                    emotion_chunks_str += f"  Dominant: {chunk_dist['dominant']}\n"
+            
+            # Build chunk-by-chunk depression analysis
+            depression_chunks_str = ""
+            if depression_result.get('chunking_applied'):
+                depression_chunks_str = "\n**DEPRESSION ANALYSIS BY CHUNK:**\n"
+                for chunk_dist in depression_result['chunk_distributions']:
+                    depression_chunks_str += f"\nChunk {chunk_dist['chunk_index']}:\n"
+                    depression_chunks_str += f"  Preview: {chunk_dist['chunk_preview']}\n"
+                    depression_chunks_str += f"  Distribution: {json.dumps(chunk_dist['distribution'], indent=4)}\n"
+                    depression_chunks_str += f"  Level: {chunk_dist['dominant']}\n"
+            
+            llm_prompt = f"""Analyze this mental health assessment data with CHUNK-LEVEL GRANULARITY:
 
-EMOTION ANALYSIS (Classifier Distribution):
-{json.dumps(emotion_result['emotion_scores'], indent=2)}
-- Dominant: {emotion_result['dominant_emotion']}
+EMOTION ANALYSIS SUMMARY:
+- Total chunks: {emotion_result.get('chunks_analyzed', 1)}
+- Aggregated distribution: {json.dumps(emotion_result['all_emotions'], indent=2)}
+- Overall dominant: {emotion_result['dominant_emotion']} ({emotion_result['confidence']:.2f})
 
-DEPRESSION ANALYSIS:
-- Level: {depression_result['depression_level']}
-- Confidence: {depression_result['confidence']:.2f}
-- Severity: {depression_result['severity']}/10
+{emotion_chunks_str}
 
-NO TEXT PROVIDED (Full Privacy Mode)
+DEPRESSION ANALYSIS SUMMARY:
+- Total chunks: {depression_result.get('chunks_analyzed', 1)}
+- Aggregated distribution: {json.dumps(depression_result['all_scores'], indent=2)}
+- Overall level: {depression_result['depression_level']} (severity: {depression_result['severity']}/10)
+
+{depression_chunks_str}
+
+**CRITICAL**: You have MULTIPLE softmax distributions from different parts of the text.
+Analyze:
+1. **Emotional progression**: How emotions change across chunks
+2. **Mixed states**: Conflicting emotions in different sections
+3. **Severity patterns**: Increasing/decreasing depression indicators
+4. **Context clues**: Chunk previews show content transitions
+
+NO TEXT PROVIDED (Full Privacy Mode) - Use distributions + chunk previews only.
 
 Provide assessment as JSON with specific scores and DIRECT recommendations:
 {{
@@ -1006,32 +1057,58 @@ Provide assessment as JSON with specific scores and DIRECT recommendations:
     "risk_level": "low/moderate/high/critical",
     "confidence": 0.0-1.0,
     "key_indicators": ["indicator1", "indicator2"],
-    "recommendations": ["You should...", "Consider..."]
+    "recommendations": ["You should...", "Consider..."],
+    "emotional_trajectory": "Description of how emotions evolved across chunks"
 }}
 
-IMPORTANT: Write recommendations in SECOND PERSON (address the person directly as 'you', not 'they' or 'the user')."""
+IMPORTANT: Write recommendations in SECOND PERSON (address as 'you')."""
 
         else:
-            # ANONYMIZED: Remove PII, send to LLM
-            print("Mode: Anonymized - Removing PII and sending to LLM")
+            # ANONYMIZED: Remove PII, send to LLM WITH CHUNK CONTEXT
+            print("Mode: Anonymized - Removing PII and sending to LLM with chunk analysis")
             
-            anonymized_text = remove_pii(request.text)  # ADD THIS LINE
+            anonymized_text = remove_pii(request.text)
             
-            llm_prompt = f"""Analyze this mental health journal entry:
+            # Truncate if very long
+            if len(anonymized_text) > 4000:
+                anonymized_text = anonymized_text[:4000] + "\n[... text truncated for LLM analysis ...]"
+                print(f"⚠️ Truncated anonymized text to 4000 chars for LLM")
+            
+            # Build chunk-level analysis strings (same as above)
+            emotion_chunks_str = ""
+            if emotion_result.get('chunking_applied'):
+                emotion_chunks_str = "\n**EMOTION PROGRESSION ACROSS CHUNKS:**\n"
+                for chunk_dist in emotion_result['chunk_distributions']:
+                    emotion_chunks_str += f"\nChunk {chunk_dist['chunk_index']}: {chunk_dist['dominant']}\n"
+                    emotion_chunks_str += f"  Distribution: {json.dumps(chunk_dist['distribution'], indent=4)}\n"
+            
+            depression_chunks_str = ""
+            if depression_result.get('chunking_applied'):
+                depression_chunks_str = "\n**DEPRESSION INDICATORS BY SECTION:**\n"
+                for chunk_dist in depression_result['chunk_distributions']:
+                    depression_chunks_str += f"\nChunk {chunk_dist['chunk_index']}: {chunk_dist['dominant']}\n"
+                    depression_chunks_str += f"  Distribution: {json.dumps(chunk_dist['distribution'], indent=4)}\n"
+            
+            llm_prompt = f"""Analyze this mental health journal entry with CHUNK-LEVEL EMOTION TRACKING:
 
 ANONYMIZED TEXT:
 "{anonymized_text}"
 
-LOCAL CLASSIFIER RESULTS:
-Emotion Distribution: {json.dumps(emotion_result['emotion_scores'], indent=2)}
-Dominant Emotion: {emotion_result['dominant_emotion']}
+EMOTION ANALYSIS (Chunked - {emotion_result.get('chunks_analyzed', 1)} sections):
+Overall: {emotion_result['dominant_emotion']} ({emotion_result['confidence']:.2f})
+{emotion_chunks_str}
 
-Depression Analysis:
-- Level: {depression_result['depression_level']}
-- Severity: {depression_result['severity']}/10
-- Confidence: {depression_result['confidence']:.2f}
+DEPRESSION ANALYSIS (Chunked - {depression_result.get('chunks_analyzed', 1)} sections):
+Overall: {depression_result['depression_level']} (severity: {depression_result['severity']}/10)
+{depression_chunks_str}
 
-Provide comprehensive assessment as JSON with specific scores and DIRECT recommendations:
+**LEVERAGE CHUNK-LEVEL DATA**:
+- Identify emotional shifts throughout the journal
+- Detect conflicting feelings in different sections
+- Assess if depression indicators worsen or improve across text
+- Provide context-aware recommendations based on emotional trajectory
+
+Provide comprehensive assessment as JSON:
 {{
     "mental_health_score": 0-100,
     "depression_score": 0-100,
@@ -1040,10 +1117,11 @@ Provide comprehensive assessment as JSON with specific scores and DIRECT recomme
     "risk_level": "low/moderate/high/critical",
     "confidence": 0.0-1.0,
     "key_indicators": ["indicator1", "indicator2"],
-    "recommendations": ["You should...", "Consider..."]
+    "recommendations": ["You should...", "Consider..."],
+    "emotional_journey": "Description of how their emotional state evolved throughout the entry"
 }}
 
-IMPORTANT: Write recommendations in SECOND PERSON (address the person directly as 'you', not 'they' or 'the user')."""
+IMPORTANT: Write recommendations in SECOND PERSON (address as 'you')."""
 
         # Get LLM assessment
         from groq import Groq
@@ -1067,6 +1145,12 @@ IMPORTANT: Write recommendations in SECOND PERSON (address the person directly a
             "timestamp": datetime.utcnow().isoformat(),
             "privacy_mode": request.privacy_mode.value,
             "text_length": len(request.text),
+            "text_statistics": {
+                "total_tokens_emotion": emotion_result.get('total_tokens'),
+                "chunks_emotion": emotion_result.get('chunks_analyzed'),
+                "chunks_depression": depression_result.get('chunks_analyzed'),
+                "chunking_applied": emotion_result.get('chunking_applied') or depression_result.get('chunking_applied')
+            },
             "emotion_analysis": emotion_result,
             "depression_analysis": depression_result,
             "llm_assessment": llm_assessment
@@ -1081,7 +1165,9 @@ IMPORTANT: Write recommendations in SECOND PERSON (address the person directly a
             "user_id": current_user.id,
             "journal_type": "text",
             "privacy_mode": request.privacy_mode.value,
-            "content": request.text if request.privacy_mode.value == "anonymized" else None
+            "content": request.text if request.privacy_mode.value == "anonymized" else None,
+            "text_length": len(request.text),
+            "chunking_applied": emotion_result.get('chunking_applied') or depression_result.get('chunking_applied')
         }
         
         db_journal_id = await JournalService.create_journal_entry(
@@ -1107,10 +1193,16 @@ IMPORTANT: Write recommendations in SECOND PERSON (address the person directly a
             key_indicators=llm_assessment['key_indicators'],
             recommendations=llm_assessment['recommendations'],
             analysis_summary={
-                "emotion_scores": emotion_result['emotion_scores'],
+                "emotion_scores": emotion_result['all_emotions'],
                 "depression_severity": depression_result['severity'],
                 "privacy_mode": request.privacy_mode.value,
-                "db_journal_id": db_journal_id
+                "db_journal_id": db_journal_id,
+                "chunking_info": {
+                    "applied": emotion_result.get('chunking_applied') or depression_result.get('chunking_applied'),
+                    "emotion_chunks": emotion_result.get('chunks_analyzed', 1),
+                    "depression_chunks": depression_result.get('chunks_analyzed', 1),
+                    "total_tokens": emotion_result.get('total_tokens')
+                }
             }
         )
         
